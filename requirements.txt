@@ -1,0 +1,5 @@
+fire
+numpy
+tqdm
+torch
+torchvision
