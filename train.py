@@ -455,6 +455,8 @@ class Trainer():
         self.d_loss = float(total_disc_loss)
         self.GAN.D_opt.step()
 
+        # train generator
+
         self.GAN.G_opt.zero_grad()
         for i in range(self.gradient_accumulate_every):
             style, noise = inputs[i]
@@ -488,6 +490,7 @@ class Trainer():
         self.GAN.G_opt.step()
 
         # calculate moving averages
+
         if apply_path_penalty:
             self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
 
