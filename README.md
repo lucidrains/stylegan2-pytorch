@@ -4,7 +4,7 @@
 
 Simple working Pytorch implementation of Stylegan2 based on https://arxiv.org/abs/1912.04958
 
-## Requirements
+## Install
 
 You will need a machine with a GPU and CUDA installed. Then pip install the package like so
 
@@ -12,7 +12,7 @@ You will need a machine with a GPU and CUDA installed. Then pip install the pack
 > pip install stylegan2_pytorch
 ```
 
-## Usage
+## Use
 
 ```
 > stylegan2_pytorch --data /path/to/images
@@ -20,7 +20,7 @@ You will need a machine with a GPU and CUDA installed. Then pip install the pack
 
 That's it. Sample images will be saved to `results/default` and models will be saved periodically to `models/default`
 
-## Advanced Usage
+## Advanced Use
 
 You can specify the name of your project with
 
