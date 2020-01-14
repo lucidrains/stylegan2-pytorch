@@ -1,6 +1,6 @@
 # Simple StyleGan2 for Pytorch
 
-<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/sample.jpg" width="350" height="350">
+<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/sample.jpg" width="450" height="450">
 
 Simple working Pytorch implementation of Stylegan2 based on https://arxiv.org/abs/1912.04958
 
