@@ -6,16 +6,16 @@ Simple working Pytorch implementation of Stylegan2 based on https://arxiv.org/ab
 
 ## Requirements
 
-You will need a machine with a GPU and CUDA installed. Then, preferrably in a virtual environment, run
+You will need a machine with a GPU and CUDA installed. Then pip install the package like so
 
 ```
-> pip install -r requirements.txt
+> pip install stylegan2_pytorch
 ```
 
 ## Usage
 
 ```
-> python train.py --data /path/to/images
+> stylegan2_pytorch --data /path/to/images
 ```
 
 That's it. Sample images will be saved to `results/default` and models will be saved periodically to `models/default`
@@ -25,19 +25,18 @@ That's it. Sample images will be saved to `results/default` and models will be s
 You can specify the name of your project with
 
 ```
-> python train.py --data /path/to/images --name my-project-name
+> stylegan2_pytorch --data /path/to/images --name my-project-name
 ```
 
 By default, if the training gets cut off, it will automatically resume from the last checkpointed file. If you want to restart with new settings, just add a `new` flag
 
 ```
-> python train.py --new --data /path/to/images --name my-project-name --image-size 512 --network-capacity 20
+> stylegan2_pytorch --new --data /path/to/images --name my-project-name --image-size 512 --network-capacity 20
 ```
 
 ## Todo
 
 1. Add mixed precision and multi-GPU support
-2. Make installable package as command line tool
 
 ## Appreciation
 
