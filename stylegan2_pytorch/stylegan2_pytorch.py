@@ -3,7 +3,6 @@ import sys
 import math
 import fire
 from math import floor, log2
-from tqdm import tqdm
 from random import random
 from shutil import rmtree
 import multiprocessing

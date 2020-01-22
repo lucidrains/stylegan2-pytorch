@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import fire
+from tqdm import tqdm
 from stylegan2_pytorch import Trainer
 
 def train_from_folder(
