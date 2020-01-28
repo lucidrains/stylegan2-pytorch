@@ -500,11 +500,11 @@ class Trainer():
 
         # periodically save results
 
-        if self.steps != 0 and self.steps % 100 == 0:
-            if self.steps % 500 == 0:
-                self.save(floor(self.steps / SAVE_EVERY))
-            if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
-                self.evaluate(floor(self.steps / 1000))
+        if self.steps % 500 == 0:
+            self.save(floor(self.steps / SAVE_EVERY))
+
+        if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
+            self.evaluate(floor(self.steps / 1000))
 
         self.steps += 1
         self.av = None
@@ -533,12 +533,12 @@ class Trainer():
         # regular
 
         generated_images = generate_images(self.GAN.S, self.GAN.G, latents, n)
-        torchvision.utils.save_image(generated_images, f'results/{self.name}/{str(num)}.jpg', nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(RESULTS_DIR / self.name / f'{str(num)}.jpg'), nrow=num_rows)
         
         # moving averages
 
         generated_images = generate_images(self.GAN.SE, self.GAN.GE, latents, n)
-        torchvision.utils.save_image(generated_images, f'results/{self.name}/{str(num)}-ema.jpg', nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(RESULTS_DIR / self.name / f'{str(num)}-ema.jpg'), nrow=num_rows)
 
         # mixing regularities
 
@@ -558,7 +558,7 @@ class Trainer():
         mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
 
         generated_images = generate_images(self.GAN.SE, self.GAN.GE, mixed_latents, n)
-        torchvision.utils.save_image(generated_images, f'results/{self.name}/{str(num)}-mr.jpg', nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(RESULTS_DIR / self.name / f'{str(num)}-mr.jpg'), nrow=num_rows)
 
     @torch.no_grad()
     def generate_truncated(self, style, noi, trunc = 0.5):
@@ -588,7 +588,7 @@ class Trainer():
         print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f}')
 
     def model_name(self, num):
-        return f'models/{self.name}/model_{num}.pt'
+        return str(MODELS_DIR / self.name / f'model_{num}.pt')
 
     def init_folders(self):
         (RESULTS_DIR / self.name).mkdir(exist_ok=True)
