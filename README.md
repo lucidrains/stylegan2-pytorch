@@ -60,3 +60,24 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
   year    = {2019},
 }
 ```
+
+```bibtex
+@article{,
+  title= {Oxford 102 Flowers},
+  author= {Nilsback, M-E. and Zisserman, A., 2008},
+  abstract= {A 102 category dataset consisting of 102 flower categories, commonly occuring in the United Kingdom. Each class consists of 40 to 258 images. The images have large scale, pose and light variations.}
+}
+```
+
+```bibtex
+@article{afifi201911k,
+  title={11K Hands: gender recognition and biometric identification using a large dataset of hand images},
+  author={Afifi, Mahmoud},
+  journal={Multimedia Tools and Applications},
+  volume={78},
+  number={15},
+  pages={20835--20854},
+  year={2019},
+  publisher={Springer}
+}
+```
