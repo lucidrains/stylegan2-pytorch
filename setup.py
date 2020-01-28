@@ -4,13 +4,13 @@ setup(
   name = 'stylegan2_pytorch',
   packages = find_packages(),
   scripts=['bin/stylegan2_pytorch'],
-  version = '0.3.3',
+  version = '0.3.4',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
   author_email = 'lucidrains@gmail.com',
   url = 'https://github.com/lucidrains/stylegan2-pytorch',
-  download_url = 'https://github.com/lucidrains/stylegan2-pytorch/archive/v_033.tar.gz',
+  download_url = 'https://github.com/lucidrains/stylegan2-pytorch/archive/v_034.tar.gz',
   keywords = ['generative adversarial networks', 'artificial intelligence'],
   install_requires=[
       'fire',
@@ -19,7 +19,7 @@ setup(
       'torch',
       'torchvision',
       'pillow',
-      'adamod'
+      'torch_optimizer'
   ],
   classifiers=[
       'Development Status :: 4 - Beta',

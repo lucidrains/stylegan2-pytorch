@@ -4,4 +4,4 @@ tqdm
 torch
 torchvision
 pillow
-adamod
+torch_optimizer
