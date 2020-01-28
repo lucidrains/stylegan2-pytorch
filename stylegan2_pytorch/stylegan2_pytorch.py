@@ -591,8 +591,8 @@ class Trainer():
         return str(MODELS_DIR / self.name / f'model_{num}.pt')
 
     def init_folders(self):
-        (RESULTS_DIR / self.name).mkdir(exist_ok=True)
-        (MODELS_DIR / self.name).mkdir(exist_ok=True)
+        (RESULTS_DIR / self.name).mkdir(parents=True, exist_ok=True)
+        (MODELS_DIR / self.name).mkdir(parents=True, exist_ok=True)
 
     def clear(self):
         rmtree(f'./models/{self.name}')
