@@ -5,8 +5,11 @@ Simple working Pytorch implementation of Stylegan2 based on https://arxiv.org/ab
 
 Below are some flowers that do not exist.
 
-<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/sample.jpg" width="450" height="450">
+<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/flowers.jpg" width="450" height="450">
 
+Neither do these hands
+
+<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/hands.jpg" width="450" height="450">
 
 ## Install
 
@@ -35,7 +38,7 @@ stylegan2_pytorch --data /path/to/images --name my-project-name
 By default, if the training gets cut off, it will automatically resume from the last checkpointed file. If you want to restart with new settings, just add a `new` flag
 
 ```bash
-stylegan2_pytorch --new --data /path/to/images --name my-project-name --image-size 512 --network-capacity 20
+stylegan2_pytorch --new --data /path/to/images --name my-project-name --image-size 512 --batch-size 1 --gradient-accumulate-every 16 --network-capacity 10
 ```
 
 ## Todo

@@ -12,7 +12,8 @@ def train_from_folder(
     batch_size = 3,
     gradient_accumulate_every = 5,
     network_capacity = 16,
-    num_train_steps = 100000
+    num_train_steps = 100000,
+    learning_rate = 2e-4
 ):
     model = Trainer(
         name,
@@ -20,7 +21,8 @@ def train_from_folder(
         batch_size = batch_size,
         gradient_accumulate_every = gradient_accumulate_every,
         image_size = image_size,
-        network_capacity = network_capacity
+        network_capacity = network_capacity,
+        lr = learning_rate
     )
 
     if not new:

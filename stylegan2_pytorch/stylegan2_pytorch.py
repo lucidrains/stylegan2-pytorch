@@ -12,7 +12,8 @@ import torch
 from torch import nn
 from torch.utils import data
 import torch.nn.functional as F
-from adamod import AdaMod
+
+from torch_optimizer import DiffGrad
 from torch.autograd import grad as torch_grad
 
 import torchvision
@@ -20,6 +21,8 @@ from torchvision import transforms
 
 from PIL import Image
 from pathlib import Path
+
+assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
 num_cores = multiprocessing.cpu_count()
 
@@ -33,26 +36,20 @@ MODELS_DIR = CURRENT_DIR / 'models'
 
 SAVE_EVERY = 10000
 EXTS = ['jpg', 'png']
-
+EPS = 1e-8
 # helpers
-
-def d(tensor=None):
-    if tensor is None:
-        return 'cuda' if torch.cuda.is_available() else 'cpu'
-    return 'cuda' if tensor.is_cuda else 'cpu'
 
 def gradient_penalty(images, output, weight = 10):
     batch_size = images.shape[0]
     gradients = torch_grad(outputs=output, inputs=images,
-                           grad_outputs=torch.ones(output.size(), device=d()),
+                           grad_outputs=torch.ones(output.size()).cuda(),
                            create_graph=True, retain_graph=True, only_inputs=True)[0]
 
     gradients = gradients.view(batch_size, -1)
-    gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-8)
-    return weight * ((gradients_norm - 1) ** 2).mean()
+    return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
 def noise(n, latent_dim):
-    return torch.randn(n, latent_dim, device=d())
+    return torch.randn(n, latent_dim).cuda()
 
 def noise_list(n, layers, latent_dim):
     return [(noise(n, latent_dim), layers)]
@@ -65,7 +62,7 @@ def latent_to_w(style_vectorizer, latent_descr):
     return [(style_vectorizer(z), num_layers) for z, num_layers in latent_descr]
 
 def image_noise(n, im_size):
-    return torch.FloatTensor(n, im_size, im_size, 1).uniform_(0., 1.).to(d())
+    return torch.FloatTensor(n, im_size, im_size, 1).uniform_(0., 1.).cuda()
 
 def cycle(iterable):
     while True:
@@ -171,7 +168,7 @@ class Conv2DMod(nn.Module):
         self.kernel = kernel
         self.stride = stride
         self.dilation = dilation
-        self.weight = nn.Parameter(torch.randn((out_chan, in_chan, kernel, kernel), requires_grad=True, device=d()))
+        self.weight = nn.Parameter(torch.randn((out_chan, in_chan, kernel, kernel)))
         nn.init.kaiming_normal_(self.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
 
     def _get_same_padding(self, size, kernel, dilation, stride):
@@ -185,7 +182,7 @@ class Conv2DMod(nn.Module):
         weights = w2 * (w1 + 1)
 
         if self.demod:
-            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdims=True) + 1e-6)
+            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdims=True) + EPS)
             weights = weights * d
 
         x = x.reshape(1, -1, h, w)
@@ -264,7 +261,7 @@ class Generator(nn.Module):
         self.num_layers = int(log2(image_size) - 1)
 
         init_channels = 4 * network_capacity
-        self.initial_block = nn.Parameter(torch.randn((init_channels, 4, 4), requires_grad=True, device=d()))
+        self.initial_block = nn.Parameter(torch.randn((init_channels, 4, 4)))
         filters = [init_channels] + [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
         in_out_pairs = zip(filters[0:-1], filters[1:])
 
@@ -342,8 +339,8 @@ class StyleGAN2(nn.Module):
         set_requires_grad(self.GE, False)
 
         generator_params = list(self.G.parameters()) + list(self.S.parameters())
-        self.G_opt = AdaMod(generator_params, lr = self.lr, betas=(0.5, 0.9))
-        self.D_opt = AdaMod(self.D.parameters(), lr = self.lr, betas=(0.5, 0.9))
+        self.G_opt = DiffGrad(generator_params, lr = self.lr, betas=(0.5, 0.9))
+        self.D_opt = DiffGrad(self.D.parameters(), lr = self.lr, betas=(0.5, 0.9))
 
         self._init_weights()
         self.reset_parameter_averaging()
@@ -351,13 +348,13 @@ class StyleGAN2(nn.Module):
     def _init_weights(self):
         for m in self.modules():
             if type(m) in {nn.Conv2d, nn.Linear}:
-                m.weight.data.normal_(0., 0.02)
+                nn.init.kaiming_normal_(m.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
 
         for block in self.G.blocks:
-            torch.nn.init.zeros_(block.to_noise1.weight)
-            torch.nn.init.zeros_(block.to_noise2.weight)
-            torch.nn.init.zeros_(block.to_noise1.bias)
-            torch.nn.init.zeros_(block.to_noise2.bias)
+            nn.init.zeros_(block.to_noise1.weight)
+            nn.init.zeros_(block.to_noise2.weight)
+            nn.init.zeros_(block.to_noise1.bias)
+            nn.init.zeros_(block.to_noise2.bias)
 
     def EMA(self):
         def update_moving_average(ma_model, current_model):
@@ -376,9 +373,9 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, folder, image_size, batch_size = 4, lr = 2e-4, mixed_prob = 0.9, gradient_accumulate_every=1, *args, **kwargs):
+    def __init__(self, name, folder, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, *args, **kwargs):
         self.GAN = StyleGAN2(lr=lr, image_size = image_size, *args, **kwargs)
-        self.GAN.to(d())
+        self.GAN.cuda()
 
         self.folder = folder
         self.name = name
@@ -404,8 +401,8 @@ class Trainer():
 
     def train(self):
         self.GAN.train()
-        total_disc_loss = torch.tensor(0., device=d())
-        total_gen_loss = torch.tensor(0., device=d())
+        total_disc_loss = torch.tensor(0.).cuda()
+        total_gen_loss = torch.tensor(0.).cuda()
 
         batch_size = self.batch_size
 
@@ -434,7 +431,7 @@ class Trainer():
             generated_images = self.GAN.G(w_styles, noise)
             fake_output = self.GAN.D(generated_images.clone().detach())
 
-            image_batch = next(self.loader).to(d())
+            image_batch = next(self.loader).cuda()
             image_batch.requires_grad_()
             real_output = self.GAN.D(image_batch)
 
@@ -444,7 +441,7 @@ class Trainer():
             if apply_gradient_penalty:
                 gp = gradient_penalty(image_batch, real_output)
                 self.last_gp_loss = gp.clone().detach().item()
-                disc_loss += gp
+                disc_loss = disc_loss + gp
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.backward()
@@ -471,14 +468,16 @@ class Trainer():
             gen_loss = loss
 
             if apply_path_penalty:
-                std = 0.1 / (w_styles.std(dim = 0, keepdims = True) + 1e-8)
-                w_styles_2 = w_styles + torch.randn(w_styles.shape, device=d()) / (std + 1e-8)
+                std = 0.1 / (w_styles.std(dim = 0, keepdims = True) + EPS)
+                w_styles_2 = w_styles + torch.randn(w_styles.shape).cuda() / (std + EPS)
                 pl_images = self.GAN.G(w_styles_2, noise)
                 pl_lengths = ((pl_images - generated_images) ** 2).mean(dim = (1, 2, 3))
                 avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
 
                 if self.pl_mean is not None:
-                    gen_loss += ((pl_lengths - self.pl_mean) ** 2).mean()
+                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+                    if not torch.isnan(pl_loss):
+                        gen_loss = gen_loss + pl_loss
 
             gen_loss = gen_loss / self.gradient_accumulate_every
             gen_loss.backward()
@@ -490,7 +489,7 @@ class Trainer():
 
         # calculate moving averages
 
-        if apply_path_penalty:
+        if apply_path_penalty and not np.isnan(avg_pl_length):
             self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
 
         if self.steps % 10 == 0 and self.steps > 20000:
@@ -548,7 +547,7 @@ class Trainer():
             repeat_idx = [1] * a.dim()
             repeat_idx[dim] = n_tile
             a = a.repeat(*(repeat_idx))
-            order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).to(d())
+            order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).cuda()
             return torch.index_select(a, dim, order_index)
 
         nn = noise(num_rows, latent_dim)
@@ -577,7 +576,7 @@ class Trainer():
         w_space = []     
         for tensor, num_layers in style:
             tmp = self.GAN.S(tensor)
-            av_torch = torch.from_numpy(self.av).to(d())
+            av_torch = torch.from_numpy(self.av).cuda()
             tmp = trunc * (tmp - av_torch) + av_torch
             w_space.append((tmp, num_layers))
 
