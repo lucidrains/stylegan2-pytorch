@@ -5,7 +5,8 @@ from stylegan2_pytorch import Trainer
 
 def train_from_folder(
     data,
-    output_dir = '.',
+    results_dir = './results',
+    models_dir = './models',
     name = 'default',
     new = False,
     load_from = -1,
