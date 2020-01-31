@@ -28,9 +28,11 @@ num_cores = multiprocessing.cpu_count()
 
 # paths
 
-CURRENT_DIR = Path('.')
-RESULTS_DIR = CURRENT_DIR / 'results'
-MODELS_DIR = CURRENT_DIR / 'models'
+# CURRENT_DIR = Path('.')
+# RESULTS_DIR = CURRENT_DIR / 'results'
+# MODELS_DIR = CURRENT_DIR / 'models'
+RESULTS_DIR = Path(results_dir)
+MODELS_DIR = Path(models_dir)
 
 # constants
 
