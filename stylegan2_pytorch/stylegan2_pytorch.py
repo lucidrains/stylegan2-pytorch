@@ -28,10 +28,6 @@ num_cores = multiprocessing.cpu_count()
 
 # paths
 
-CURRENT_DIR = Path('.')
-RESULTS_DIR = CURRENT_DIR / 'results'
-MODELS_DIR = CURRENT_DIR / 'models'
-
 # constants
 
 SAVE_EVERY = 10000
@@ -382,12 +378,14 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, folder, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, *args, **kwargs):
+    def __init__(self, name, folder, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, *args, **kwargs):
         self.GAN = StyleGAN2(lr=lr, image_size = image_size, *args, **kwargs)
         self.GAN.cuda()
 
         self.folder = folder
         self.name = name
+        self.results_dir = Path(results_dir)
+        self.models_dir = Path(models_dir)
 
         self.batch_size = batch_size
         self.lr = lr
@@ -542,12 +540,12 @@ class Trainer():
         # regular
 
         generated_images = generate_images(self.GAN.S, self.GAN.G, latents, n)
-        torchvision.utils.save_image(generated_images, str(RESULTS_DIR / self.name / f'{str(num)}.jpg'), nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.jpg'), nrow=num_rows)
         
         # moving averages
 
         generated_images = generate_images(self.GAN.SE, self.GAN.GE, latents, n)
-        torchvision.utils.save_image(generated_images, str(RESULTS_DIR / self.name / f'{str(num)}-ema.jpg'), nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-ema.jpg'), nrow=num_rows)
 
         # mixing regularities
 
@@ -567,7 +565,7 @@ class Trainer():
         mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
 
         generated_images = generate_images(self.GAN.SE, self.GAN.GE, mixed_latents, n)
-        torchvision.utils.save_image(generated_images, str(RESULTS_DIR / self.name / f'{str(num)}-mr.jpg'), nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.jpg'), nrow=num_rows)
 
     @torch.no_grad()
     def generate_truncated(self, style, noi, trunc = 0.5):
@@ -597,11 +595,11 @@ class Trainer():
         print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f}')
 
     def model_name(self, num):
-        return str(MODELS_DIR / self.name / f'model_{num}.pt')
+        return str(self.models_dir / self.name / f'model_{num}.pt')
 
     def init_folders(self):
-        (RESULTS_DIR / self.name).mkdir(parents=True, exist_ok=True)
-        (MODELS_DIR / self.name).mkdir(parents=True, exist_ok=True)
+        (self.results_dir / self.name).mkdir(parents=True, exist_ok=True)
+        (self.models_dir / self.name).mkdir(parents=True, exist_ok=True)
 
     def clear(self):
         rmtree(f'./models/{self.name}')
@@ -614,7 +612,7 @@ class Trainer():
     def load(self, num = -1):
         name = num
         if num == -1:
-            file_paths = [p for p in Path(MODELS_DIR / self.name).glob('model_*.pt')]
+            file_paths = [p for p in Path(self.models_dir / self.name).glob('model_*.pt')]
             saved_nums = sorted(map(lambda x: int(x.stem.split('_')[1]), file_paths))
             if len(saved_nums) == 0:
                 return

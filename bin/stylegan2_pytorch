@@ -5,6 +5,8 @@ from stylegan2_pytorch import Trainer
 
 def train_from_folder(
     data,
+    results_dir = './results',
+    models_dir = './models',
     name = 'default',
     new = False,
     load_from = -1,
@@ -18,6 +20,8 @@ def train_from_folder(
     model = Trainer(
         name,
         data,
+        results_dir,
+        models_dir,
         batch_size = batch_size,
         gradient_accumulate_every = gradient_accumulate_every,
         image_size = image_size,

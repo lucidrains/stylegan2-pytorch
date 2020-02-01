@@ -35,6 +35,12 @@ You can specify the name of your project with
 stylegan2_pytorch --data /path/to/images --name my-project-name
 ```
 
+You can also specify the location where intermediate results and model checkpoints should be stored with
+
+```bash
+stylegan2_pytorch --data /path/to/images --name my-project-name --results_dir /path/to/results/dir --models_dir /path/to/models/dir
+```
+
 By default, if the training gets cut off, it will automatically resume from the last checkpointed file. If you want to restart with new settings, just add a `new` flag
 
 ```bash
