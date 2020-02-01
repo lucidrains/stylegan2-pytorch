@@ -28,10 +28,6 @@ num_cores = multiprocessing.cpu_count()
 
 # paths
 
-# CURRENT_DIR = Path('.')
-# RESULTS_DIR = CURRENT_DIR / 'results'
-# MODELS_DIR = CURRENT_DIR / 'models'
-
 # constants
 
 SAVE_EVERY = 10000
@@ -599,7 +595,7 @@ class Trainer():
         print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f}')
 
     def model_name(self, num):
-        return str(MODELS_DIR / self.name / f'model_{num}.pt')
+        return str(self.models_dir / self.name / f'model_{num}.pt')
 
     def init_folders(self):
         (self.results_dir / self.name).mkdir(parents=True, exist_ok=True)
