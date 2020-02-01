@@ -30,7 +30,7 @@ num_cores = multiprocessing.cpu_count()
 
 # constants
 
-SAVE_EVERY = 10000
+# SAVE_EVERY = 10000
 EXTS = ['jpg', 'png']
 EPS = 1e-8
 
@@ -378,7 +378,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, folder, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, *args, **kwargs):
+    def __init__(self, name, folder, results_dir, models_dir, save_every, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, *args, **kwargs):
         self.GAN = StyleGAN2(lr=lr, image_size = image_size, *args, **kwargs)
         self.GAN.cuda()
 
@@ -386,6 +386,7 @@ class Trainer():
         self.name = name
         self.results_dir = Path(results_dir)
         self.models_dir = Path(models_dir)
+        self.save_every = save_every
 
         self.batch_size = batch_size
         self.lr = lr
@@ -508,7 +509,7 @@ class Trainer():
         # periodically save results
 
         if self.steps % 500 == 0:
-            self.save(floor(self.steps / SAVE_EVERY))
+            self.save(floor(self.steps / self.save_every))
 
         if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
             self.evaluate(floor(self.steps / 1000))
@@ -618,5 +619,5 @@ class Trainer():
                 return
             name = saved_nums[-1]
             print(f'continuing from previous epoch - {name}')
-        self.steps = name * SAVE_EVERY
+        self.steps = name * self.save_every
         self.GAN.load_state_dict(torch.load(self.model_name(name)))
