@@ -388,8 +388,8 @@ class Trainer():
 
         self.folder = folder
         self.name = name
-        self.results_dir = results_dir
-        self.models_dir = models_dir
+        self.results_dir = Path(results_dir)
+        self.models_dir = Path(models_dir)
 
         self.batch_size = batch_size
         self.lr = lr
