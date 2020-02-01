@@ -8,7 +8,7 @@ def train_from_folder(
     results_dir = './results',
     models_dir = './models',
     name = 'default',
-    save_every = 1000,
+    save_every = 10000,
     new = False,
     load_from = -1,
     image_size = 128,
