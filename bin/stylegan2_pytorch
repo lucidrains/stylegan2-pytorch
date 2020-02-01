@@ -20,6 +20,8 @@ def train_from_folder(
     model = Trainer(
         name,
         data,
+        results_dir,
+        models_dir,
         batch_size = batch_size,
         gradient_accumulate_every = gradient_accumulate_every,
         image_size = image_size,
