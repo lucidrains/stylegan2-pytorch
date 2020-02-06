@@ -16,13 +16,13 @@ Neither do these hands
 You will need a machine with a GPU and CUDA installed. Then pip install the package like so
 
 ```bash
-pip install stylegan2_pytorch
+$ pip install stylegan2_pytorch
 ```
 
 ## Use
 
 ```bash
-stylegan2_pytorch --data /path/to/images
+$ stylegan2_pytorch --data /path/to/images
 ```
 
 That's it. Sample images will be saved to `results/default` and models will be saved periodically to `models/default`.
@@ -32,25 +32,31 @@ That's it. Sample images will be saved to `results/default` and models will be s
 You can specify the name of your project with
 
 ```bash
-stylegan2_pytorch --data /path/to/images --name my-project-name
+$ stylegan2_pytorch --data /path/to/images --name my-project-name
 ```
 
 You can also specify the location where intermediate results and model checkpoints should be stored with
 
 ```bash
-stylegan2_pytorch --data /path/to/images --name my-project-name --results_dir /path/to/results/dir --models_dir /path/to/models/dir
+$ stylegan2_pytorch --data /path/to/images --name my-project-name --results_dir /path/to/results/dir --models_dir /path/to/models/dir
 ```
 
 By default, if the training gets cut off, it will automatically resume from the last checkpointed file. If you want to restart with new settings, just add a `new` flag
 
 ```bash
-stylegan2_pytorch --new --data /path/to/images --name my-project-name --image-size 512 --batch-size 1 --gradient-accumulate-every 16 --network-capacity 10
+$ stylegan2_pytorch --new --data /path/to/images --name my-project-name --image-size 512 --batch-size 1 --gradient-accumulate-every 16 --network-capacity 10
 ```
 
-Once you have finished training, you can generate images from your favorite checkpoint like so.
+Once you have finished training, you can generate images from your latest checkpoint like so.
 
 ```bash
-stylegan2_pytorch --load_from {checkpoint num} --generate
+$ stylegan2_pytorch  --generate
+```
+
+If a previous checkpoint contained a better generator, (which often happens as generators start degrading towards the end of training), you can load from a previous checkpoint with another flag
+
+```bash
+$ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
 ## Todo
