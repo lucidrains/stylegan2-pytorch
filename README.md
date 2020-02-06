@@ -25,7 +25,7 @@ pip install stylegan2_pytorch
 stylegan2_pytorch --data /path/to/images
 ```
 
-That's it. Sample images will be saved to `results/default` and models will be saved periodically to `models/default`
+That's it. Sample images will be saved to `results/default` and models will be saved periodically to `models/default`.
 
 ## Advanced Use
 
@@ -45,6 +45,12 @@ By default, if the training gets cut off, it will automatically resume from the 
 
 ```bash
 stylegan2_pytorch --new --data /path/to/images --name my-project-name --image-size 512 --batch-size 1 --gradient-accumulate-every 16 --network-capacity 10
+```
+
+Once you have finished training, you can generate images from your favorite checkpoint like so.
+
+```bash
+stylegan2_pytorch --load_from {checkpoint num} --generate
 ```
 
 ## Todo
