@@ -5,6 +5,7 @@ import fire
 from math import floor, log2
 from random import random
 from shutil import rmtree
+from functools import partial
 import multiprocessing
 
 import numpy as np
@@ -91,6 +92,9 @@ def set_requires_grad(model, bool):
     for p in model.parameters():
         p.requires_grad = bool
 
+def default(value, d):
+    return d if value is None else value
+
 # helper classes
 
 class EMA():
@@ -104,6 +108,11 @@ class EMA():
 
 # dataset
 
+def resize_to_minimum_size(min_size, image):
+    if max(*image.size) < min_size:
+        return torchvision.transforms.functional.resize(image, min_size)
+    return image
+
 class Dataset(data.Dataset):
     def __init__(self, folder, image_size):
         super().__init__()
@@ -111,10 +120,8 @@ class Dataset(data.Dataset):
         self.image_size = image_size        
         self.paths = [p for ext in EXTS for p in Path(f'{folder}').glob(f'**/*.{ext}')]
 
-        if len(self.paths) == 0:
-            raise Exception(f'no images found at {folder}')
-
         self.transform = transform = transforms.Compose([
+            transforms.Lambda(partial(resize_to_minimum_size, image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0)),
             transforms.ToTensor()
@@ -378,7 +385,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, folder, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, *args, **kwargs):
+    def __init__(self, name, folder, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, *args, **kwargs):
         self.GAN = StyleGAN2(lr=lr, image_size = image_size, *args, **kwargs)
         self.GAN.cuda()
 
@@ -396,7 +403,7 @@ class Trainer():
         self.pl_mean = 0
 
         self.dataset = Dataset(folder, image_size)
-        self.loader = cycle(data.DataLoader(self.dataset, num_workers = 1, batch_size = batch_size, drop_last = True, shuffle=True, pin_memory=True))
+        self.loader = cycle(data.DataLoader(self.dataset, num_workers = default(num_workers, num_cores), batch_size = batch_size, drop_last = True, shuffle=True, pin_memory=True))
         self.gradient_accumulate_every = gradient_accumulate_every
 
         self.d_loss = 0
@@ -406,7 +413,9 @@ class Trainer():
         self.pl_length_ma = EMA(0.99)
         self.init_folders()
 
-    def train(self):
+    def train(self):        
+        assert len(self.dataset) > 0, f'no images found at {self.dataset.folder}'
+
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda()
         total_gen_loss = torch.tensor(0.).cuda()

@@ -17,6 +17,7 @@ def train_from_folder(
     network_capacity = 16,
     num_train_steps = 100000,
     learning_rate = 2e-4,
+    num_workers =  None,
     generate = False
 ):
     model = Trainer(
@@ -28,7 +29,8 @@ def train_from_folder(
         gradient_accumulate_every = gradient_accumulate_every,
         image_size = image_size,
         network_capacity = network_capacity,
-        lr = learning_rate
+        lr = learning_rate,
+        num_workers = num_workers
     )
 
     if not new:
