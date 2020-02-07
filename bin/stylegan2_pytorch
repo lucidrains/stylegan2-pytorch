@@ -40,7 +40,7 @@ def train_from_folder(
 
     if generate:
         now = datetime.now()
-        timestamp = now.strftime("%m/%d/%Y, %H:%M:%S")
+        timestamp = now.strftime("%m-%d-%Y_%H:%M:%S")
         samples_name = f'generated-{timestamp}'
         model.evaluate(samples_name)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
