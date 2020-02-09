@@ -21,8 +21,7 @@ def train_from_folder(
     generate = False
 ):
     model = Trainer(
-        name,
-        data,
+        name,        
         results_dir,
         models_dir,
         batch_size = batch_size,
@@ -45,6 +44,8 @@ def train_from_folder(
         model.evaluate(samples_name)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
         return
+
+    model.set_data_src(data)
 
     for _ in tqdm(range(num_train_steps - model.steps), mininterval=10.):
         model.train()

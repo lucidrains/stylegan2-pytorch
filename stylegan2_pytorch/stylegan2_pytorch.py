@@ -385,16 +385,17 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, folder, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, *args, **kwargs):
         self.GAN = StyleGAN2(lr=lr, image_size = image_size, *args, **kwargs)
         self.GAN.cuda()
 
-        self.folder = folder
         self.name = name
         self.results_dir = Path(results_dir)
         self.models_dir = Path(models_dir)
+        self.image_size = image_size
 
         self.batch_size = batch_size
+        self.num_workers = num_workers
         self.lr = lr
         self.mixed_prob = mixed_prob
         self.steps = 0
@@ -402,8 +403,6 @@ class Trainer():
         self.av = None
         self.pl_mean = 0
 
-        self.dataset = Dataset(folder, image_size)
-        self.loader = cycle(data.DataLoader(self.dataset, num_workers = default(num_workers, num_cores), batch_size = batch_size, drop_last = True, shuffle=True, pin_memory=True))
         self.gradient_accumulate_every = gradient_accumulate_every
 
         self.d_loss = 0
@@ -413,8 +412,14 @@ class Trainer():
         self.pl_length_ma = EMA(0.99)
         self.init_folders()
 
+        self.loader = None
+
+    def set_data_src(self, folder):
+        self.dataset = Dataset(folder, self.image_size)
+        self.loader = cycle(data.DataLoader(self.dataset, num_workers = default(self.num_workers, num_cores), batch_size = self.batch_size, drop_last = True, shuffle=True, pin_memory=True))
+
     def train(self):        
-        assert len(self.dataset) > 0, f'no images found at {self.dataset.folder}'
+        assert self.loader is not None, 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda()
