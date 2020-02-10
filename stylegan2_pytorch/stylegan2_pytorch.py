@@ -27,8 +27,6 @@ assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA inst
 
 num_cores = multiprocessing.cpu_count()
 
-# paths
-
 # constants
 
 SAVE_EVERY = 10000
@@ -108,6 +106,11 @@ class EMA():
 
 # dataset
 
+def convert_transparent_to_rgb(image):
+    if image.mode == 'RGBA':
+        return image.convert('RGB')
+    return image
+
 def expand_to_rgb(tensor):
     return tensor.expand(3, -1, -1)
 
@@ -124,6 +127,7 @@ class Dataset(data.Dataset):
         self.paths = [p for ext in EXTS for p in Path(f'{folder}').glob(f'**/*.{ext}')]
 
         self.transform = transform = transforms.Compose([
+            transforms.Lambda(convert_transparent_to_rgb),
             transforms.Lambda(partial(resize_to_minimum_size, image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0)),
