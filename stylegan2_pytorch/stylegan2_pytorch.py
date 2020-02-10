@@ -108,6 +108,9 @@ class EMA():
 
 # dataset
 
+def expand_to_rgb(tensor):
+    return tensor.expand(3, -1, -1)
+
 def resize_to_minimum_size(min_size, image):
     if max(*image.size) < min_size:
         return torchvision.transforms.functional.resize(image, min_size)
@@ -124,7 +127,8 @@ class Dataset(data.Dataset):
             transforms.Lambda(partial(resize_to_minimum_size, image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0)),
-            transforms.ToTensor()
+            transforms.ToTensor(),
+            transforms.Lambda(expand_to_rgb)
         ])
 
     def __len__(self):
