@@ -23,7 +23,7 @@ If you are using a windows machine, the following commands reportedly works.
 
 ```bash
 $ conda install pytorch torchvision -c python
-$ conda install stylegan2_pytorch
+$ pip install stylegan2_pytorch
 ```
 
 ## Use
