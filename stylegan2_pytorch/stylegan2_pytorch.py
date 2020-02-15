@@ -2,6 +2,7 @@ import os
 import sys
 import math
 import fire
+import json
 from math import floor, log2
 from random import random
 from shutil import rmtree
@@ -393,18 +394,21 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, *args, **kwargs):
-        self.GAN = StyleGAN2(lr=lr, image_size = image_size, *args, **kwargs)
-        self.GAN.cuda()
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, *args, **kwargs):
+        self.GAN_params = [args, kwargs]
+        self.GAN = None
 
         self.name = name
         self.results_dir = Path(results_dir)
         self.models_dir = Path(models_dir)
-        self.image_size = image_size
+        self.config_path = self.models_dir / name / '.config.json'
 
+        self.image_size = image_size
+        self.network_capacity = network_capacity
+
+        self.lr = lr
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.lr = lr
         self.mixed_prob = mixed_prob
         self.steps = 0
 
@@ -422,12 +426,34 @@ class Trainer():
 
         self.loader = None
 
+    def init_GAN(self):
+        args, kwargs = self.GAN_params
+        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, *args, **kwargs)
+        self.GAN.cuda()
+
+    def write_config(self):
+        self.config_path.write_text(json.dumps(self.config()))
+
+    def load_config(self):
+        config = self.config() if not self.config_path.exists() else json.loads(self.config_path.read_text())
+        self.image_size = config['image_size']
+        self.network_capacity = config['network_capacity']
+
+        del self.GAN
+        self.init_GAN()
+
+    def config(self):
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity}
+
     def set_data_src(self, folder):
         self.dataset = Dataset(folder, self.image_size)
         self.loader = cycle(data.DataLoader(self.dataset, num_workers = default(self.num_workers, num_cores), batch_size = self.batch_size, drop_last = True, shuffle=True, pin_memory=True))
 
-    def train(self):        
+    def train(self):
         assert self.loader is not None, 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
+
+        if self.GAN is None:
+            self.init_GAN()
 
         self.GAN.train()
         total_disc_loss = torch.tensor(0.).cuda()
@@ -624,14 +650,18 @@ class Trainer():
         (self.models_dir / self.name).mkdir(parents=True, exist_ok=True)
 
     def clear(self):
-        rmtree(f'./models/{self.name}')
-        rmtree(f'./results/{self.name}')
+        rmtree(f'./models/{self.name}', True)
+        rmtree(f'./results/{self.name}', True)
+        rmtree(str(self.config_path), True)
         self.init_folders()
 
     def save(self, num):
         torch.save(self.GAN.state_dict(), self.model_name(num))
+        self.write_config()
 
     def load(self, num = -1):
+        self.load_config()
+
         name = num
         if num == -1:
             file_paths = [p for p in Path(self.models_dir / self.name).glob('model_*.pt')]
