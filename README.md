@@ -19,6 +19,13 @@ You will need a machine with a GPU and CUDA installed. Then pip install the pack
 $ pip install stylegan2_pytorch
 ```
 
+If you are using a windows machine, the following commands reportedly works.
+
+```bash
+$ conda install pytorch torchvision -c python
+$ pip install stylegan2_pytorch
+```
+
 ## Use
 
 ```bash
