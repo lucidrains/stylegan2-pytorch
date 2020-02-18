@@ -511,8 +511,6 @@ class Trainer():
         self.GAN.G_opt.zero_grad()
         for i in range(self.gradient_accumulate_every):
             style, noise = inputs[i]
-            style = get_latents_fn(batch_size, num_layers, latent_dim)
-            noise = image_noise(batch_size, image_size)
 
             w_space = latent_to_w(self.GAN.S, style)
             w_styles = styles_def_to_tensor(w_space)
