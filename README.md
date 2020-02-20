@@ -66,6 +66,21 @@ If a previous checkpoint contained a better generator, (which often happens as g
 $ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
+## Memory considerations
+
+The more GPU memory you have, the bigger and better the image generation will be. Nvidia recommended having up to 16GB for training 1024x1024 images. If you have less than that, there are a couple settings you can play with so that the model fits.
+
+```bash
+$ stylegan2_pytorch --data /path/to/data \
+    --batch-size 3 \
+    --gradient-accumulate-every 5 \
+    --network-capacity 16
+```
+
+1. Batch size - You can decrease the `batch-size` down to 1, but you should increase the `gradient-accumulate-every` correspondingly so that the mini-batch the network sees is not too small. This may be confusing to a layperson, so I'll think about how I would automate the choice of `gradient-accumulate-every` going forward.
+
+2. Network capacity - You can decrease the neural network capacity to lessen the memory requirements. Just be aware that this has been shown to degrade generation performance.
+
 ## Todo
 
 1. Add mixed precision and multi-GPU support
