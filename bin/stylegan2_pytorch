@@ -18,7 +18,8 @@ def train_from_folder(
     num_train_steps = 100000,
     learning_rate = 2e-4,
     num_workers =  None,
-    generate = False
+    generate = False,
+    num_image_tiles = 8
 ):
     model = Trainer(
         name,        
@@ -41,7 +42,7 @@ def train_from_folder(
         now = datetime.now()
         timestamp = now.strftime("%m-%d-%Y_%H:%M:%S")
         samples_name = f'generated-{timestamp}'
-        model.evaluate(samples_name)
+        model.evaluate(samples_name, num_image_tiles=num_image_tiles)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
         return
 

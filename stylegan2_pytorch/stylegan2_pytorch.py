@@ -563,9 +563,9 @@ class Trainer():
         self.av = None
 
     @torch.no_grad()
-    def evaluate(self, num = 0, trunc = 1.0):
+    def evaluate(self, num = 0, trunc = 1.0, num_image_tiles = 8):
         self.GAN.eval()
-        num_rows = 8
+        num_rows = num_image_tiles
 
         def generate_images(stylizer, generator, latents, noise):
             w = latent_to_w(stylizer, latents)
@@ -614,7 +614,7 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.jpg'), nrow=num_rows)
 
     @torch.no_grad()
-    def generate_truncated(self, style, noi, trunc = 0.5):
+    def generate_truncated(self, style, noi, trunc = 0.5, num_image_tiles = 8):
         latent_dim = self.GAN.G.latent_dim
 
         if self.av is None:
@@ -623,7 +623,7 @@ class Trainer():
             self.av = np.mean(samples, axis = 0)
             self.av = np.expand_dims(self.av, axis = 0)
 
-        num_rows = 8
+        num_rows = num_image_tiles
         image_size = self.GAN.G.image_size
             
         w_space = []     
