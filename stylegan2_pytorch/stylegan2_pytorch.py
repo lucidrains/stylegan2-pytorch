@@ -563,7 +563,7 @@ class Trainer():
         self.av = None
 
     @torch.no_grad()
-    def evaluate(self, num = 0, trunc = 1.0, num_image_tiles = 8):
+    def evaluate(self, num = 0, num_image_tiles = 8, trunc = 1.0):
         self.GAN.eval()
         num_rows = num_image_tiles
 
