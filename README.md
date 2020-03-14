@@ -13,7 +13,7 @@ Neither do these hands
 
 ## Install
 
-You will need a machine with a GPU and CUDA installed. Then pip install the package like so
+You will need a machine with a GPU and CUDA installed. Then pip install the package like this
 
 ```bash
 $ pip install stylegan2_pytorch
