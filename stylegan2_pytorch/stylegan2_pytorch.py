@@ -402,6 +402,7 @@ class Trainer():
         self.models_dir = Path(models_dir)
         self.config_path = self.models_dir / name / '.config.json'
 
+        assert log2(image_size).is_integer(), 'image size must be a power of 2 (64, 128, 256, 512, 1024)'
         self.image_size = image_size
         self.network_capacity = network_capacity
 
