@@ -202,7 +202,7 @@ class Conv2DMod(nn.Module):
         weights = w2 * (w1 + 1)
 
         if self.demod:
-            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdims=True) + EPS)
+            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdim=True) + EPS)
             weights = weights * d
 
         x = x.reshape(1, -1, h, w)
@@ -523,7 +523,7 @@ class Trainer():
             gen_loss = loss
 
             if apply_path_penalty:
-                std = 0.1 / (w_styles.std(dim = 0, keepdims = True) + EPS)
+                std = 0.1 / (w_styles.std(dim = 0, keepdim = True) + EPS)
                 w_styles_2 = w_styles + torch.randn(w_styles.shape).cuda() / (std + EPS)
                 pl_images = self.GAN.G(w_styles_2, noise)
                 pl_lengths = ((pl_images - generated_images) ** 2).mean(dim = (1, 2, 3))
