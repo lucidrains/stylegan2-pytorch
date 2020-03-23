@@ -130,7 +130,7 @@ class Dataset(data.Dataset):
             transforms.Lambda(convert_transparent_to_rgb),
             transforms.Lambda(partial(resize_to_minimum_size, image_size)),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0)),
+            transforms.RandomResizedCrop(image_size, scale=(0.85, 1.0), ratio=(1., 1.)),
             transforms.ToTensor(),
             transforms.Lambda(expand_to_rgb)
         ])
