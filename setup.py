@@ -4,7 +4,7 @@ setup(
   name = 'stylegan2_pytorch',
   packages = find_packages(),
   scripts=['bin/stylegan2_pytorch'],
-  version = '0.4.16',
+  version = '0.4.17',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
