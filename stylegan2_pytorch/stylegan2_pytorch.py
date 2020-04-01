@@ -130,7 +130,8 @@ class Dataset(data.Dataset):
             transforms.Lambda(convert_transparent_to_rgb),
             transforms.Lambda(partial(resize_to_minimum_size, image_size)),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomResizedCrop(image_size, scale=(0.85, 1.0), ratio=(7./8., 8./7.)),
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
             transforms.ToTensor(),
             transforms.Lambda(expand_to_rgb)
         ])
@@ -346,7 +347,7 @@ class StyleGAN2(nn.Module):
         super().__init__()
         self.lr = lr
         self.steps = steps
-        self.ema_updater = EMA(0.99)
+        self.ema_updater = EMA(0.995)
 
         self.S = StyleVectorizer(latent_dim, style_depth)
         self.G = Generator(image_size, latent_dim, network_capacity)
@@ -474,13 +475,11 @@ class Trainer():
 
         avg_pl_length = self.pl_mean
         self.GAN.D_opt.zero_grad()
-        inputs = []
 
         for i in range(self.gradient_accumulate_every):
             get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
             style = get_latents_fn(batch_size, num_layers, latent_dim)
             noise = image_noise(batch_size, image_size)
-            inputs.append((style, noise))
 
             w_space = latent_to_w(self.GAN.S, style)
             w_styles = styles_def_to_tensor(w_space)
@@ -512,7 +511,8 @@ class Trainer():
 
         self.GAN.G_opt.zero_grad()
         for i in range(self.gradient_accumulate_every):
-            style, noise = inputs[i]
+            style = get_latents_fn(batch_size, num_layers, latent_dim)
+            noise = image_noise(batch_size, image_size)
 
             w_space = latent_to_w(self.GAN.S, style)
             w_styles = styles_def_to_tensor(w_space)
