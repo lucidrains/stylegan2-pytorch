@@ -32,25 +32,16 @@ num_cores = multiprocessing.cpu_count()
 
 EXTS = ['jpg', 'png']
 EPS = 1e-8
-
 # helpers
 
-def gradient_penalty(D, real_images, fake_images, weight = 10):
-    x_interp = interpolate(real_images, fake_images)
-    x_interp.requires_grad_(True)
-    o_interp = D(x_interp)
+def gradient_penalty(images, output, weight = 10):
+    batch_size = images.shape[0]
+    gradients = torch_grad(outputs=output, inputs=images,
+                           grad_outputs=torch.ones(output.size()).cuda(),
+                           create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-    grad = torch_grad(  outputs=o_interp, inputs=x_interp,
-                        grad_outputs=torch.ones(o_interp.size()).cuda(),
-                        create_graph=True, retain_graph=True, only_inputs=True)[0]
-
-    grad = grad.view(grad.shape[0], -1)
-    grad_norm, _ = torch.max(torch.abs(grad), 1)
-    return weight * F.relu(grad_norm - 1).mean()
-
-def interpolate(x1, x2):
-    u = torch.zeros(x1.shape[0], 1, 1, 1).uniform_(0, 1).cuda()
-    return x1 * u + x2 * (1 - u)
+    gradients = gradients.view(batch_size, -1)
+    return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
 def noise(n, latent_dim):
     return torch.randn(n, latent_dim).cuda()
@@ -484,8 +475,8 @@ class Trainer():
             w_space = latent_to_w(self.GAN.S, style)
             w_styles = styles_def_to_tensor(w_space)
 
-            generated_images = self.GAN.G(w_styles, noise).detach()
-            fake_output = self.GAN.D(generated_images)
+            generated_images = self.GAN.G(w_styles, noise)
+            fake_output = self.GAN.D(generated_images.clone().detach())
 
             image_batch = next(self.loader).cuda()
             image_batch.requires_grad_()
@@ -495,7 +486,7 @@ class Trainer():
             disc_loss = divergence
 
             if apply_gradient_penalty:
-                gp = gradient_penalty(self.GAN.D, generated_images, image_batch)
+                gp = gradient_penalty(image_batch, real_output)
                 self.last_gp_loss = gp.clone().detach().item()
                 disc_loss = disc_loss + gp
 

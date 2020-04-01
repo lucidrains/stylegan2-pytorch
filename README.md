@@ -89,8 +89,6 @@ $ stylegan2_pytorch --data /path/to/data \
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0
 
-This also uses the `hinge L∞ gradient penalty` described in https://arxiv.org/abs/1910.06922
-
 ## References
 
 ```bibtex
@@ -100,15 +98,6 @@ This also uses the `hinge L∞ gradient penalty` described in https://arxiv.org/
   journal = {CoRR},
   volume  = {abs/1912.04958},
   year    = {2019},
-}
-```
-
-```bibtex
-@article{jolicoeur2019connections}
-  title={Connections between Support Vector Machines, Wasserstein distance and gradient-penalty GANs},
-  author={Jolicoeur-Martineau, Alexia},
-  journal={arXiv preprint arXiv:1910.06922},
-  year={2019}
 }
 ```
 
