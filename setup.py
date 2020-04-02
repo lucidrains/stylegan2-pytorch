@@ -4,7 +4,7 @@ setup(
   name = 'stylegan2_pytorch',
   packages = find_packages(),
   scripts=['bin/stylegan2_pytorch'],
-  version = '0.4.19',
+  version = '0.4.20',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
@@ -15,6 +15,7 @@ setup(
   install_requires=[
       'fire',
       'numpy',
+      'retry',
       'tqdm',
       'torch',
       'torchvision',

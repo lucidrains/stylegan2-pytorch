@@ -32,7 +32,34 @@ num_cores = multiprocessing.cpu_count()
 
 EXTS = ['jpg', 'png']
 EPS = 1e-8
+
+# helper classes
+
+class NanException(Exception):
+    pass
+
+class EMA():
+    def __init__(self, beta):
+        super().__init__()
+        self.beta = beta
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.beta + (1 - self.beta) * new
+
 # helpers
+
+def default(value, d):
+    return d if value is None else value
+
+def cycle(iterable):
+    while True:
+        for i in iterable:
+            yield i
+
+def raise_if_nan(t):
+    if torch.isnan(t):
+        raise NanException
 
 def gradient_penalty(images, output, weight = 10):
     batch_size = images.shape[0]
@@ -59,11 +86,6 @@ def latent_to_w(style_vectorizer, latent_descr):
 def image_noise(n, im_size):
     return torch.FloatTensor(n, im_size, im_size, 1).uniform_(0., 1.).cuda()
 
-def cycle(iterable):
-    while True:
-        for i in iterable:
-            yield i
-
 def leaky_relu(p):
     return nn.LeakyReLU(p, inplace=True)
 
@@ -80,20 +102,6 @@ def styles_def_to_tensor(styles_def):
 def set_requires_grad(model, bool):
     for p in model.parameters():
         p.requires_grad = bool
-
-def default(value, d):
-    return d if value is None else value
-
-# helper classes
-
-class EMA():
-    def __init__(self, beta):
-        super().__init__()
-        self.beta = beta
-    def update_average(self, old, new):
-        if old is None:
-            return new
-        return old * self.beta + (1 - self.beta) * new
 
 # dataset
 
@@ -491,6 +499,7 @@ class Trainer():
                 disc_loss = disc_loss + gp
 
             disc_loss = disc_loss / self.gradient_accumulate_every
+            disc_loss.register_hook(raise_if_nan)
             disc_loss.backward()
 
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
@@ -526,6 +535,7 @@ class Trainer():
                         gen_loss = gen_loss + pl_loss
 
             gen_loss = gen_loss / self.gradient_accumulate_every
+            gen_loss.register_hook(raise_if_nan)
             gen_loss.backward()
 
             total_gen_loss += loss.detach().item() / self.gradient_accumulate_every

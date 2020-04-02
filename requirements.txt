@@ -1,7 +1,0 @@
-fire
-numpy
-tqdm
-torch
-torchvision
-pillow
-torch_optimizer

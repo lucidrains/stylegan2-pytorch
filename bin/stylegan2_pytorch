@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 import fire
+from retry.api import retry_call
 from tqdm import tqdm
-from stylegan2_pytorch import Trainer
+from stylegan2_pytorch import Trainer, NanException
 from datetime import datetime
 
 def train_from_folder(
@@ -50,8 +51,8 @@ def train_from_folder(
 
     model.set_data_src(data)
 
-    for _ in tqdm(range(num_train_steps - model.steps), mininterval=10.):
-        model.train()
+    for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
+        retry_call(model.train, tries=3, exceptions=NanException)
         if _ % 50 == 0:
             model.print_log()
 
