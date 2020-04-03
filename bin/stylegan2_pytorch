@@ -21,7 +21,8 @@ def train_from_folder(
     num_workers =  None,
     save_every = 1000,
     generate = False,
-    num_image_tiles = 8
+    num_image_tiles = 8,
+    trunc_psi = 0.6
 ):
     model = Trainer(
         name,        
@@ -33,7 +34,8 @@ def train_from_folder(
         network_capacity = network_capacity,
         lr = learning_rate,
         num_workers = num_workers,
-        save_every = save_every
+        save_every = save_every,
+        trunc_psi = trunc_psi
     )
 
     if not new:
