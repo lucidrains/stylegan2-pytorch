@@ -7,6 +7,8 @@ Below are some flowers that do not exist.
 
 <img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/flowers.jpg" width="450" height="auto">
 
+<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/flowers-2.jpg" width="450" height="auto">
+
 Neither do these hands
 
 <img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/hands.jpg" width="450" height="auto">
