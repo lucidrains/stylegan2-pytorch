@@ -556,10 +556,19 @@ class Trainer():
         if self.steps <= 25000 and self.steps % 1000 == 2:
             self.GAN.reset_parameter_averaging()
 
+        # save from NaN errors
+
+        checkpoint_num = floor(self.steps / self.save_every)
+
+        if any(torch.isnan(l) for l in (total_gen_loss, total_disc_loss)):
+            print(f'NaN detected for generator or discriminator. Loading from checkpoint #{checkpoint_num}')
+            self.load(checkpoint_num)
+            raise NanException
+
         # periodically save results
 
         if self.steps % self.save_every == 0:
-            self.save(floor(self.steps / self.save_every))
+            self.save(checkpoint_num)
 
         if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
             self.evaluate(floor(self.steps / 1000))
@@ -623,7 +632,7 @@ class Trainer():
         latent_dim = G.latent_dim
 
         if self.av is None:
-            z = noise(8000, latent_dim)
+            z = noise(2000, latent_dim)
             samples = evaluate_in_chunks(self.batch_size, S, z).cpu().numpy()
             self.av = np.mean(samples, axis = 0)
             self.av = np.expand_dims(self.av, axis = 0)
