@@ -83,10 +83,6 @@ $ stylegan2_pytorch --data /path/to/data \
 
 2. Network capacity - You can decrease the neural network capacity to lessen the memory requirements. Just be aware that this has been shown to degrade generation performance.
 
-## Todo
-
-1. Add mixed precision and multi-GPU support
-
 ## Appreciation
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0
