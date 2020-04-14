@@ -68,6 +68,14 @@ If a previous checkpoint contained a better generator, (which often happens as g
 $ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
+## Bonus
+
+Training on transparent images
+
+```bash
+$ stylegan2_pytorch --data ./transparent/images/path --transparent
+```
+
 ## Memory considerations
 
 The more GPU memory you have, the bigger and better the image generation will be. Nvidia recommended having up to 16GB for training 1024x1024 images. If you have less than that, there are a couple settings you can play with so that the model fits.

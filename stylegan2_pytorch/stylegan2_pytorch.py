@@ -105,13 +105,20 @@ def set_requires_grad(model, bool):
 
 # dataset
 
+def convert_rgb_to_transparent(image):
+    if image.mode == 'RGB':
+        return image.convert('RGBA')
+    return image
+
 def convert_transparent_to_rgb(image):
     if image.mode == 'RGBA':
         return image.convert('RGB')
     return image
 
-def expand_to_rgb(tensor):
-    return tensor.expand(3, -1, -1)
+def expand_greyscale(num_channels):
+    def inner(tensor):
+        return tensor.expand(num_channels, -1, -1)
+    return inner
 
 def resize_to_minimum_size(min_size, image):
     if max(*image.size) < min_size:
@@ -119,20 +126,23 @@ def resize_to_minimum_size(min_size, image):
     return image
 
 class Dataset(data.Dataset):
-    def __init__(self, folder, image_size):
+    def __init__(self, folder, image_size, transparent = False):
         super().__init__()
         self.folder = folder
-        self.image_size = image_size        
+        self.image_size = image_size
         self.paths = [p for ext in EXTS for p in Path(f'{folder}').glob(f'**/*.{ext}')]
 
-        self.transform = transform = transforms.Compose([
-            transforms.Lambda(convert_transparent_to_rgb),
+        convert_image_fn = convert_transparent_to_rgb if not transparent else convert_rgb_to_transparent
+        num_channels = 3 if not transparent else 4
+
+        self.transform = transforms.Compose([
+            transforms.Lambda(convert_image_fn),
             transforms.Lambda(partial(resize_to_minimum_size, image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.Resize(image_size),
             transforms.CenterCrop(image_size),
             transforms.ToTensor(),
-            transforms.Lambda(expand_to_rgb)
+            transforms.Lambda(expand_greyscale(num_channels))
         ])
 
     def __len__(self):
@@ -159,11 +169,13 @@ class StyleVectorizer(nn.Module):
         return self.net(x)
 
 class RGBBlock(nn.Module):
-    def __init__(self, latent_dim, input_channel, upsample):
+    def __init__(self, latent_dim, input_channel, upsample, rgba = False):
         super().__init__()
         self.input_channel = input_channel
         self.to_style = nn.Linear(latent_dim, input_channel)
-        self.conv = Conv2DMod(input_channel, 3, 1, demod=False)
+
+        out_filters = 3 if not rgba else 4
+        self.conv = Conv2DMod(input_channel, out_filters, 1, demod=False)
 
         self.upsample = nn.Upsample(scale_factor = 2, mode='bilinear', align_corners=False) if upsample else None
 
@@ -217,7 +229,7 @@ class Conv2DMod(nn.Module):
         return x
 
 class GeneratorBlock(nn.Module):
-    def __init__(self, latent_dim, input_channels, filters, upsample = True, upsample_rgb = True):
+    def __init__(self, latent_dim, input_channels, filters, upsample = True, upsample_rgb = True, rgba = False):
         super().__init__()
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False) if upsample else None
 
@@ -230,7 +242,7 @@ class GeneratorBlock(nn.Module):
         self.conv2 = Conv2DMod(filters, filters, 3)
 
         self.activation = leaky_relu(0.2)
-        self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb)
+        self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
 
     def forward(self, x, prev_rgb, istyle, inoise):
         if self.upsample is not None:
@@ -274,7 +286,7 @@ class DiscriminatorBlock(nn.Module):
         return x
 
 class Generator(nn.Module):
-    def __init__(self, image_size, latent_dim, network_capacity = 16):
+    def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False):
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
@@ -295,7 +307,8 @@ class Generator(nn.Module):
                 in_chan,
                 out_chan,
                 upsample = not_first,
-                upsample_rgb = not_last
+                upsample_rgb = not_last,
+                rgba = transparent
             )
             self.blocks.append(block)
 
@@ -312,12 +325,13 @@ class Generator(nn.Module):
         return rgb
 
 class Discriminator(nn.Module):
-    def __init__(self, image_size, network_capacity = 16):
+    def __init__(self, image_size, network_capacity = 16, transparent = False):
         super().__init__()
         num_layers = int(log2(image_size) - 1)
+        num_init_filters = 3 if not transparent else 4
 
         blocks = []
-        filters = [3] + [(network_capacity) * (2 ** i) for i in range(num_layers + 1)]
+        filters = [num_init_filters] + [(network_capacity) * (2 ** i) for i in range(num_layers + 1)]
         chan_in_out = list(zip(filters[0:-1], filters[1:]))
 
         blocks = []
@@ -342,18 +356,18 @@ class Discriminator(nn.Module):
         return x.squeeze()
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, steps = 1, lr = 1e-4):
+    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, steps = 1, lr = 1e-4):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
 
         self.S = StyleVectorizer(latent_dim, style_depth)
-        self.G = Generator(image_size, latent_dim, network_capacity)
-        self.D = Discriminator(image_size, network_capacity)
+        self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
+        self.D = Discriminator(image_size, network_capacity, transparent = transparent)
 
         self.SE = StyleVectorizer(latent_dim, style_depth)
-        self.GE = Generator(image_size, latent_dim, network_capacity)
+        self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
 
         set_requires_grad(self.SE, False)
         set_requires_grad(self.GE, False)
@@ -393,7 +407,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -405,6 +419,7 @@ class Trainer():
         assert log2(image_size).is_integer(), 'image size must be a power of 2 (64, 128, 256, 512, 1024)'
         self.image_size = image_size
         self.network_capacity = network_capacity
+        self.transparent = transparent
 
         self.lr = lr
         self.batch_size = batch_size
@@ -432,7 +447,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, *args, **kwargs)
+        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, *args, **kwargs)
         self.GAN.cuda()
 
     def write_config(self):
@@ -442,15 +457,16 @@ class Trainer():
         config = self.config() if not self.config_path.exists() else json.loads(self.config_path.read_text())
         self.image_size = config['image_size']
         self.network_capacity = config['network_capacity']
+        self.transparent = config['transparent']
 
         del self.GAN
         self.init_GAN()
 
     def config(self):
-        return {'image_size': self.image_size, 'network_capacity': self.network_capacity}
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent}
 
     def set_data_src(self, folder):
-        self.dataset = Dataset(folder, self.image_size)
+        self.dataset = Dataset(folder, self.image_size, transparent = self.transparent)
         self.loader = cycle(data.DataLoader(self.dataset, num_workers = default(self.num_workers, num_cores), batch_size = self.batch_size, drop_last = True, shuffle=True, pin_memory=True))
 
     def train(self):
@@ -579,6 +595,7 @@ class Trainer():
     @torch.no_grad()
     def evaluate(self, num = 0, num_image_tiles = 8, trunc = 1.0):
         self.GAN.eval()
+        ext = 'jpg' if not self.transparent else 'png'
         num_rows = num_image_tiles
 
         def generate_images(stylizer, generator, latents, noise):
@@ -600,12 +617,12 @@ class Trainer():
         # regular
 
         generated_images = generate_images(self.GAN.S, self.GAN.G, latents, n)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.jpg'), nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
         
         # moving averages
 
         generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-ema.jpg'), nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
 
         # mixing regularities
 
@@ -625,7 +642,7 @@ class Trainer():
         mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
 
         generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, mixed_latents, n, trunc_psi = self.trunc_psi)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.jpg'), nrow=num_rows)
+        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
     def generate_truncated(self, S, G, style, noi, trunc_psi = 0.6, num_image_tiles = 8):
