@@ -24,6 +24,12 @@ from torchvision import transforms
 from PIL import Image
 from pathlib import Path
 
+try:
+    from apex import amp
+    APEX_AVAILABLE = True
+except:
+    APEX_AVAILABLE = False
+
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
 num_cores = multiprocessing.cpu_count()
@@ -60,6 +66,13 @@ def cycle(iterable):
 def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
+
+def loss_backwards(fp16, loss, optimizer):
+    if fp16:
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
+    else:
+        loss.backward()
 
 def gradient_penalty(images, output, weight = 10):
     batch_size = images.shape[0]
@@ -356,7 +369,7 @@ class Discriminator(nn.Module):
         return x.squeeze()
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, steps = 1, lr = 1e-4):
+    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, steps = 1, lr = 1e-4):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -378,6 +391,11 @@ class StyleGAN2(nn.Module):
 
         self._init_weights()
         self.reset_parameter_averaging()
+
+        self.cuda()
+        
+        if fp16:
+            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O2')
 
     def _init_weights(self):
         for m in self.modules():
@@ -407,7 +425,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -436,6 +454,9 @@ class Trainer():
 
         self.gradient_accumulate_every = gradient_accumulate_every
 
+        assert not fp16 or fp16 and APEX_AVAILABLE, 'Apex is not available for you to use mixed precision training'
+        self.fp16 = fp16
+
         self.d_loss = 0
         self.g_loss = 0
         self.last_gp_loss = 0
@@ -447,8 +468,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, *args, **kwargs)
-        self.GAN.cuda()
+        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fp16 = self.fp16, *args, **kwargs)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -488,6 +508,8 @@ class Trainer():
         apply_gradient_penalty = self.steps % 4 == 0
         apply_path_penalty = self.steps % 32 == 0
 
+        backwards = partial(loss_backwards, self.fp16)
+
         # train discriminator
 
         avg_pl_length = self.pl_mean
@@ -518,7 +540,7 @@ class Trainer():
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.register_hook(raise_if_nan)
-            disc_loss.backward()
+            backwards(disc_loss, self.GAN.D_opt)
 
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
@@ -554,7 +576,7 @@ class Trainer():
 
             gen_loss = gen_loss / self.gradient_accumulate_every
             gen_loss.register_hook(raise_if_nan)
-            gen_loss.backward()
+            backwards(gen_loss, self.GAN.G_opt)
 
             total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
 

@@ -76,6 +76,12 @@ Training on transparent images
 $ stylegan2_pytorch --data ./transparent/images/path --transparent
 ```
 
+Using half precision for greater memory savings
+
+```bash
+$ stylegan2_pytorch --data ./data --image-size 256 --fp16
+```
+
 ## Memory considerations
 
 The more GPU memory you have, the bigger and better the image generation will be. Nvidia recommended having up to 16GB for training 1024x1024 images. If you have less than that, there are a couple settings you can play with so that the model fits.
