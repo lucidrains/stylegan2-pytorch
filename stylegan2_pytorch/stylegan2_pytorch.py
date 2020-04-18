@@ -128,10 +128,11 @@ def convert_transparent_to_rgb(image):
         return image.convert('RGB')
     return image
 
-def expand_greyscale(num_channels):
-    def inner(tensor):
-        return tensor.expand(num_channels, -1, -1)
-    return inner
+class expand_greyscale(object):
+    def __init__(self, num_channels):
+        self.num_channels = num_channels
+    def __call__(self, tensor):
+        return tensor.expand(self.num_channels, -1, -1)
 
 def resize_to_minimum_size(min_size, image):
     if max(*image.size) < min_size:
