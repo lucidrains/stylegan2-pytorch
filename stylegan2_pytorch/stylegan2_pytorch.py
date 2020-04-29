@@ -21,6 +21,8 @@ from torch.autograd import grad as torch_grad
 import torchvision
 from torchvision import transforms
 
+from contrastive_learner import ContrastiveLearner
+
 from PIL import Image
 from pathlib import Path
 
@@ -67,12 +69,12 @@ def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
 
-def loss_backwards(fp16, loss, optimizer):
+def loss_backwards(fp16, loss, optimizer, **kwargs):
     if fp16:
         with amp.scale_loss(loss, optimizer) as scaled_loss:
-            scaled_loss.backward()
+            scaled_loss.backward(**kwargs)
     else:
-        loss.backward()
+        loss.backward(**kwargs)
 
 def gradient_penalty(images, output, weight = 10):
     batch_size = images.shape[0]
@@ -99,7 +101,7 @@ def latent_to_w(style_vectorizer, latent_descr):
 def image_noise(n, im_size):
     return torch.FloatTensor(n, im_size, im_size, 1).uniform_(0., 1.).cuda()
 
-def leaky_relu(p):
+def leaky_relu(p=0.2):
     return nn.LeakyReLU(p, inplace=True)
 
 def evaluate_in_chunks(max_batch_size, model, *args):
@@ -175,7 +177,7 @@ class StyleVectorizer(nn.Module):
 
         layers = []
         for i in range(depth):
-            layers.extend([nn.Linear(emb, emb), leaky_relu(0.2)])
+            layers.extend([nn.Linear(emb, emb), leaky_relu()])
 
         self.net = nn.Sequential(*layers)
 
@@ -255,7 +257,7 @@ class GeneratorBlock(nn.Module):
         self.to_noise2 = nn.Linear(1, filters)
         self.conv2 = Conv2DMod(filters, filters, 3)
 
-        self.activation = leaky_relu(0.2)
+        self.activation = leaky_relu()
         self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
 
     def forward(self, x, prev_rgb, istyle, inoise):
@@ -284,9 +286,9 @@ class DiscriminatorBlock(nn.Module):
 
         self.net = nn.Sequential(
             nn.Conv2d(input_channels, filters, 3, padding=1),
-            leaky_relu(0.2),
+            leaky_relu(),
             nn.Conv2d(filters, filters, 3, padding=1),
-            leaky_relu(0.2)
+            leaky_relu()
         )
 
         self.downsample = nn.Conv2d(filters, filters, 3, padding = 1, stride = 2) if downsample else None
@@ -360,7 +362,8 @@ class Discriminator(nn.Module):
             blocks.append(block)
 
         self.blocks = nn.Sequential(*blocks)
-        self.to_logit = nn.Linear(2 * 2 * filters[-1], 1)
+        latent_dim = 2 * 2 * filters[-1]
+        self.to_logit = nn.Linear(latent_dim, 1)
 
     def forward(self, x):
         b, *_ = x.shape
@@ -370,7 +373,7 @@ class Discriminator(nn.Module):
         return x.squeeze()
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, steps = 1, lr = 1e-4):
+    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -382,6 +385,9 @@ class StyleGAN2(nn.Module):
 
         self.SE = StyleVectorizer(latent_dim, style_depth)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
+
+        # experimental contrastive loss discriminator regularization
+        self.D_cl = ContrastiveLearner(self.D, image_size) if cl_reg else None
 
         set_requires_grad(self.SE, False)
         set_requires_grad(self.GE, False)
@@ -426,7 +432,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -458,9 +464,12 @@ class Trainer():
         assert not fp16 or fp16 and APEX_AVAILABLE, 'Apex is not available for you to use mixed precision training'
         self.fp16 = fp16
 
+        self.cl_reg = cl_reg
+
         self.d_loss = 0
         self.g_loss = 0
         self.last_gp_loss = 0
+        self.last_cr_loss = 0
 
         self.pl_length_ma = EMA(0.99)
         self.init_folders()
@@ -469,7 +478,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fp16 = self.fp16, *args, **kwargs)
+        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fp16 = self.fp16, cl_reg = self.cl_reg, *args, **kwargs)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -510,6 +519,19 @@ class Trainer():
         apply_path_penalty = self.steps % 32 == 0
 
         backwards = partial(loss_backwards, self.fp16)
+
+        if self.GAN.D_cl is not None:
+            self.GAN.D_opt.zero_grad()
+
+            for i in range(self.gradient_accumulate_every):
+                image_batch = next(self.loader).cuda()
+                self.GAN.D_cl(image_batch, accumulate=True)
+
+            loss = self.GAN.D_cl.calculate_loss()
+            self.last_cr_loss = loss.clone().detach().item()
+            backwards(loss, self.GAN.D_opt)
+
+            self.GAN.D_opt.step()
 
         # train discriminator
 
@@ -639,7 +661,7 @@ class Trainer():
 
         # regular
 
-        generated_images = generate_images(self.GAN.S, self.GAN.G, latents, n)
+        generated_images = self.generate_truncated(self.GAN.S, self.GAN.G, latents, n, trunc_psi = self.trunc_psi)
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
         
         # moving averages
@@ -668,7 +690,7 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
-    def generate_truncated(self, S, G, style, noi, trunc_psi = 0.6, num_image_tiles = 8):
+    def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
         latent_dim = G.latent_dim
 
         if self.av is None:
@@ -689,7 +711,7 @@ class Trainer():
         return generated_images.clamp_(0., 1.)
 
     def print_log(self):
-        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f}')
+        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f}')
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')
