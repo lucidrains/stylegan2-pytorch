@@ -134,6 +134,8 @@ cd data
 tar -xf ../train.tar.gz
 ```
 
+Now you should be able to train by simplying calling `stylegan2_pytorch [args]`.
+
 Notes:
 
 * If you have a lot of training data, you may need to provision extra block storage via EBS.
