@@ -97,6 +97,51 @@ $ stylegan2_pytorch --data /path/to/data \
 
 2. Network capacity - You can decrease the neural network capacity to lessen the memory requirements. Just be aware that this has been shown to degrade generation performance.
 
+## Deployment on AWS
+
+Below are some steps which may be helpful for deployment using Amazon Web Services. In order to use this, you will have
+to provision a GPU-backed EC2 instance. An appropriate instance type would be from a p2 or p3 series. I (iboates) tried
+a p2.xlarge (the cheapest option) and it was quite slow, slower in fact than using Google Colab. More powerful instance
+types may be better but they are more expensive. You can read more about them
+[here](https://aws.amazon.com/ec2/instance-types/#Accelerated_Computing).
+
+### Setup steps
+
+1. Archive your training data and upload it to an S3 bucket
+2. Provision your EC2 instance (I used an Ubuntu AMI)
+3. Log into your EC2 instance via SSH
+4. Install the aws CLI client and configure it:
+
+```bash
+sudo snap install aws-cli --classic
+aws configure
+```
+
+You will then have to enter your AWS access keys, which you can retrieve from the management console under AWS
+Management Console > Profile > My Security Credentials > Access Keys
+
+Then, run these commands, or maybe put them in a shell script and execute that:
+
+```bash
+mkdir data
+curl -O https://bootstrap.pypa.io/get-pip.py
+sudo apt-get install python3-distutils
+python3 get-pip.py
+pip3 install stylegan2_pytorch
+export PATH=$PATH:/home/ubuntu/.local/bin
+aws s3 sync s3://<Your bucket name> ~/data
+cd data
+tar -xf ../train.tar.gz
+```
+
+Now you should be able to train by simplying calling `stylegan2_pytorch [args]`.
+
+Notes:
+
+* If you have a lot of training data, you may need to provision extra block storage via EBS.
+* Also, you may need to spread your data across multiple archives.
+* You should run this on a `screen` window so it won't terminate once you log out of the SSH session.
+
 ## Appreciation
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0
