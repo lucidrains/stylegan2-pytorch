@@ -1,1 +1,2 @@
-from stylegan2_pytorch.stylegan2_pytorch import Trainer, StyleGAN2, NanException
+from trainer import Trainer
+from .misc.exceptions import NanException
