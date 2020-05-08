@@ -16,7 +16,7 @@ import torchvision
 from .gan import StyleGAN2
 from .gan.ema import EMA
 from .dataset import Dataset
-from misc import *
+from .misc import *
 
 
 class Trainer:
