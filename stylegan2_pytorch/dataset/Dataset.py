@@ -5,7 +5,7 @@ from PIL import Image
 from torch.utils import data
 from torchvision import transforms
 
-from misc import *
+from ..misc import *
 
 class Dataset(data.Dataset):
     def __init__(self, folder, image_size, transparent = False):
