@@ -1,4 +1,4 @@
-from constrastive_learner import ContrastiveLearner
+from contrastive_learner import ContrastiveLearner
 
 from torch_optimizer import DiffGrad
 from torch import nn
