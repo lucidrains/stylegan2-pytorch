@@ -7,7 +7,7 @@ from .ema import EMA
 from .discriminator import Discriminator
 from .generator import Generator
 from .style import StyleVectorizer
-from misc import *
+from ..misc import *
 
 try:
     from apex import amp
