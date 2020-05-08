@@ -12,17 +12,7 @@ setup(
   url = 'https://github.com/lucidrains/stylegan2-pytorch',
   download_url = 'https://github.com/lucidrains/stylegan2-pytorch/archive/v_036.tar.gz',
   keywords = ['generative adversarial networks', 'artificial intelligence'],
-  install_requires=[
-      'fire',
-      'numpy',
-      'retry',
-      'tqdm',
-      'torch',
-      'torchvision',
-      'pillow',
-      'torch_optimizer',
-      'contrastive_learner>=0.0.8'
-  ],
+  install_requires=[_.strip() for _ in open("requirements.txt").readlines()],
   classifiers=[
       'Development Status :: 4 - Beta',
       'Intended Audience :: Developers',
