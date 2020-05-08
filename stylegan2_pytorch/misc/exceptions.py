@@ -1,0 +1,2 @@
+class NanException(Exception):
+    pass
