@@ -142,6 +142,25 @@ Notes:
 * Also, you may need to spread your data across multiple archives.
 * You should run this on a `screen` window so it won't terminate once you log out of the SSH session.
 
+## Experimental
+
+### Feature Quantization
+
+A recent paper reported improved results if intermediate representations of the discriminator are vector quantized. Although I have not noticed any dramatic changes, I have decided to add this as a feature, so other minds out there can investigate. To use, you have to specify which layer(s) you would like to vector quantize. Default dictionary size is `256` and is also tunable.
+
+```python
+# feature quantize layers 1 and 2, with a dictionary size of 512 each
+$ stylegan2_pytorch --data ./data --fq-layers [1,2] --fq-dict-size 512
+```
+
+### Contrastive Loss Regularization
+
+I have tried contrastive learning on the discriminator (in step with the usual GAN training) and possibly observed improved stability and quality of final results. You can turn on this experimental feature with a simple flag as shown below.
+
+```python
+$ stylegan2_pytorch --data ./data --cl-reg
+```
+
 ## Appreciation
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0
@@ -159,22 +178,33 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
 ```
 
 ```bibtex
+@misc{zhao2020feature,
+    title   = {Feature Quantization Improves GAN Training},
+    author  = {Yang Zhao and Chunyuan Li and Ping Yu and Jianfeng Gao and Changyou Chen},
+    year    = {2020}
+}
+```
+
+```bibtex
+@misc{chen2020simple,
+    title   = {A Simple Framework for Contrastive Learning of Visual Representations},
+    author  = {Ting Chen and Simon Kornblith and Mohammad Norouzi and Geoffrey Hinton},
+    year    = {2020}
+}
+```
+
+```bibtex
 @article{,
-  title= {Oxford 102 Flowers},
-  author= {Nilsback, M-E. and Zisserman, A., 2008},
-  abstract= {A 102 category dataset consisting of 102 flower categories, commonly occuring in the United Kingdom. Each class consists of 40 to 258 images. The images have large scale, pose and light variations.}
+  title     = {Oxford 102 Flowers},
+  author    = {Nilsback, M-E. and Zisserman, A., 2008},
+  abstract  = {A 102 category dataset consisting of 102 flower categories, commonly occuring in the United Kingdom. Each class consists of 40 to 258 images. The images have large scale, pose and light variations.}
 }
 ```
 
 ```bibtex
 @article{afifi201911k,
-  title={11K Hands: gender recognition and biometric identification using a large dataset of hand images},
-  author={Afifi, Mahmoud},
-  journal={Multimedia Tools and Applications},
-  volume={78},
-  number={15},
-  pages={20835--20854},
-  year={2019},
-  publisher={Springer}
+  title   = {11K Hands: gender recognition and biometric identification using a large dataset of hand images},
+  author  = {Afifi, Mahmoud},
+  journal = {Multimedia Tools and Applications}
 }
 ```

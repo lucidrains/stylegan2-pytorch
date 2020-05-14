@@ -25,7 +25,9 @@ def train_from_folder(
     num_image_tiles = 8,
     trunc_psi = 0.75,
     fp16 = False,
-    cl_reg = False
+    cl_reg = False,
+    fq_layers = [],
+    fq_dict_size = 256
 ):
     model = Trainer(
         name,        
@@ -41,7 +43,9 @@ def train_from_folder(
         save_every = save_every,
         trunc_psi = trunc_psi,
         fp16 = fp16,
-        cl_reg = cl_reg
+        cl_reg = cl_reg,
+        fq_layers = fq_layers,
+        fq_dict_size = fq_dict_size
     )
 
     if not new:

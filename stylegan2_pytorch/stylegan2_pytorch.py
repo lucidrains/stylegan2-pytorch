@@ -55,6 +55,10 @@ class EMA():
             return new
         return old * self.beta + (1 - self.beta) * new
 
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.reshape(x.shape[0], -1)
+
 # helpers
 
 def default(value, d):
@@ -168,6 +172,57 @@ class Dataset(data.Dataset):
         path = self.paths[index]
         img = Image.open(path)
         return self.transform(img)
+
+# vector quantization class
+
+def ema_inplace(moving_avg, new, decay):
+    moving_avg.data.mul_(decay).add_(1 - decay, new)
+
+def laplace_smoothing(x, n_categories, eps=1e-5):
+    return (x + eps) / (x.sum() + n_categories * eps)
+
+class VectorQuantize(nn.Module):
+    def __init__(self, dim, n_embed, decay=0.8, commitment=1., eps=1e-5):
+        super().__init__()
+
+        self.dim = dim
+        self.n_embed = n_embed
+        self.decay = decay
+        self.eps = eps
+        self.commitment = commitment
+
+        embed = torch.randn(dim, n_embed)
+        self.register_buffer('embed', embed)
+        self.register_buffer('cluster_size', torch.zeros(n_embed))
+        self.register_buffer('embed_avg', embed.clone())
+
+    def forward(self, input):
+        dtype = input.dtype
+        input = input.permute(0, 2, 3, 1)
+        flatten = input.reshape(-1, self.dim)
+        dist = (
+            flatten.pow(2).sum(1, keepdim=True)
+            - 2 * flatten @ self.embed
+            + self.embed.pow(2).sum(0, keepdim=True)
+        )
+        _, embed_ind = (-dist).max(1)
+        embed_onehot = F.one_hot(embed_ind, self.n_embed).type(dtype)
+        embed_ind = embed_ind.view(*input.shape[:-1])
+        quantize = F.embedding(embed_ind, self.embed.transpose(0, 1))
+
+        if self.training:
+            ema_inplace(self.cluster_size, embed_onehot.sum(0), self.decay)
+            embed_sum = flatten.transpose(0, 1) @ embed_onehot
+            ema_inplace(self.embed_avg, embed_sum, self.decay)
+            cluster_size = laplace_smoothing(self.cluster_size, self.n_embed, self.eps) * self.cluster_size.sum()
+            embed_normalized = self.embed_avg / cluster_size.unsqueeze(0)
+            self.embed.data.copy_(embed_normalized)
+
+        loss = F.mse_loss(quantize.detach(), input) * self.commitment
+        quantize = input + (quantize - input).detach()
+
+        quantize = quantize.permute(0, 3, 1, 2)
+        return quantize, loss
 
 # stylegan2 classes
 
@@ -341,7 +396,7 @@ class Generator(nn.Module):
         return rgb
 
 class Discriminator(nn.Module):
-    def __init__(self, image_size, network_capacity = 16, transparent = False):
+    def __init__(self, image_size, network_capacity = 16, fq_layers = [], fq_dict_size = 256, transparent = False):
         super().__init__()
         num_layers = int(log2(image_size) - 1)
         num_init_filters = 3 if not transparent else 4
@@ -351,6 +406,8 @@ class Discriminator(nn.Module):
         chan_in_out = list(zip(filters[0:-1], filters[1:]))
 
         blocks = []
+        quantize_blocks = []
+
         for ind, (in_chan, out_chan) in enumerate(chan_in_out):
             is_not_last = ind < (len(chan_in_out) - 1)
 
@@ -361,19 +418,34 @@ class Discriminator(nn.Module):
             )
             blocks.append(block)
 
-        self.blocks = nn.Sequential(*blocks)
+            quantize_fn = VectorQuantize(out_chan, fq_dict_size) if (ind + 1)  in fq_layers else None
+            quantize_blocks.append(quantize_fn)
+
+        self.quantize_blocks = nn.ModuleList(quantize_blocks)
+        self.blocks = nn.ModuleList(blocks)
         latent_dim = 2 * 2 * filters[-1]
+
+        self.flatten = Flatten()
         self.to_logit = nn.Linear(latent_dim, 1)
 
     def forward(self, x):
         b, *_ = x.shape
-        x = self.blocks(x)
-        x = x.reshape(b, -1)
+
+        quantize_loss = torch.zeros(1).to(x)
+
+        for (block, q_block) in zip(self.blocks, self.quantize_blocks):
+            x = block(x)
+
+            if q_block is not None:
+                x, loss = q_block(x)
+                quantize_loss += loss
+
+        x = self.flatten(x)
         x = self.to_logit(x)
-        return x.squeeze()
+        return x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4):
+    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, fq_layers = [], fq_dict_size = 256):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -381,13 +453,13 @@ class StyleGAN2(nn.Module):
 
         self.S = StyleVectorizer(latent_dim, style_depth)
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
-        self.D = Discriminator(image_size, network_capacity, transparent = transparent)
+        self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, transparent = transparent)
 
         self.SE = StyleVectorizer(latent_dim, style_depth)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
 
         # experimental contrastive loss discriminator regularization
-        self.D_cl = ContrastiveLearner(self.D, image_size) if cl_reg else None
+        self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten') if cl_reg else None
 
         set_requires_grad(self.SE, False)
         set_requires_grad(self.GE, False)
@@ -432,7 +504,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -445,6 +517,8 @@ class Trainer():
         self.image_size = image_size
         self.network_capacity = network_capacity
         self.transparent = transparent
+        self.fq_layers = fq_layers if isinstance(fq_layers, list) else [fq_layers]
+        self.fq_dict_size = fq_dict_size
 
         self.lr = lr
         self.batch_size = batch_size
@@ -470,6 +544,7 @@ class Trainer():
         self.g_loss = 0
         self.last_gp_loss = 0
         self.last_cr_loss = 0
+        self.q_loss = 0
 
         self.pl_length_ma = EMA(0.99)
         self.init_folders()
@@ -478,7 +553,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fp16 = self.fp16, cl_reg = self.cl_reg, *args, **kwargs)
+        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, fp16 = self.fp16, cl_reg = self.cl_reg, *args, **kwargs)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -488,12 +563,14 @@ class Trainer():
         self.image_size = config['image_size']
         self.network_capacity = config['network_capacity']
         self.transparent = config['transparent']
+        self.fq_layers = config['fq_layers']
+        self.fq_dict_size = config['fq_dict_size']
 
         del self.GAN
         self.init_GAN()
 
     def config(self):
-        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent}
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size}
 
     def set_data_src(self, folder):
         self.dataset = Dataset(folder, self.image_size, transparent = self.transparent)
@@ -547,14 +624,19 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = self.GAN.G(w_styles, noise)
-            fake_output = self.GAN.D(generated_images.clone().detach())
+            fake_output, fake_q_loss = self.GAN.D(generated_images.clone().detach())
 
             image_batch = next(self.loader).cuda()
             image_batch.requires_grad_()
-            real_output = self.GAN.D(image_batch)
+            real_output, real_q_loss = self.GAN.D(image_batch)
 
             divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
             disc_loss = divergence
+
+            quantize_loss = (fake_q_loss + real_q_loss).mean()
+            self.q_loss = float(quantize_loss.detach().item())
+
+            disc_loss = disc_loss + quantize_loss
 
             if apply_gradient_penalty:
                 gp = gradient_penalty(image_batch, real_output)
@@ -581,7 +663,7 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = self.GAN.G(w_styles, noise)
-            fake_output = self.GAN.D(generated_images)
+            fake_output, _ = self.GAN.D(generated_images)
             loss = fake_output.mean()
             gen_loss = loss
 
@@ -711,7 +793,7 @@ class Trainer():
         return generated_images.clamp_(0., 1.)
 
     def print_log(self):
-        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f}')
+        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')
