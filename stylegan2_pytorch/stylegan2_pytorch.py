@@ -60,6 +60,9 @@ def cycle(iterable):
         for i in iterable:
             yield i
 
+def is_empty(t):
+    return t.nelement() == 0
+
 def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
@@ -164,10 +167,10 @@ class Dataset(data.Dataset):
         img = Image.open(path)
         return self.transform(img)
 
-# vector quantization class
+# exponential moving average helpers
 
 def ema_inplace(moving_avg, new, decay):
-    if moving_avg.nelement() == 0:
+    if is_empty(moving_avg):
         moving_avg.data.copy_(new)
         return
     moving_avg.data.mul_(decay).add_(1 - decay, new)
@@ -176,6 +179,8 @@ def ema_inplace_module(moving_avg_module, new):
     for current_params, ma_params in zip(moving_avg_module.parameters(), new.parameters()):
         old_weight, up_weight = ma_params.data, current_params.data
         ema_inplace(old_weight, up_weight)
+
+# vector quantization class
 
 def laplace_smoothing(x, n_categories, eps=1e-5):
     return (x + eps) / (x.sum() + n_categories * eps)
@@ -669,7 +674,7 @@ class Trainer():
                 pl_lengths = ((pl_images - generated_images) ** 2).mean(dim = (1, 2, 3))
                 avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
 
-                if self.pl_mean is not None:
+                if not is_empty(self.pl_mean):
                     pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
                     if not torch.isnan(pl_loss):
                         gen_loss = gen_loss + pl_loss
