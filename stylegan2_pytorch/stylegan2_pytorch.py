@@ -175,10 +175,10 @@ def ema_inplace(moving_avg, new, decay):
         return
     moving_avg.data.mul_(decay).add_(1 - decay, new)
 
-def ema_inplace_module(moving_avg_module, new):
+def ema_inplace_module(moving_avg_module, new, decay):
     for current_params, ma_params in zip(moving_avg_module.parameters(), new.parameters()):
         old_weight, up_weight = ma_params.data, current_params.data
-        ema_inplace(old_weight, up_weight)
+        ema_inplace(old_weight, up_weight, decay)
 
 # vector quantization class
 
@@ -492,8 +492,8 @@ class StyleGAN2(nn.Module):
             nn.init.zeros_(block.to_noise2.bias)
 
     def EMA(self):
-        ema_inplace_module(self.SE, self.S)
-        ema_inplace_module(self.GE, self.G)
+        ema_inplace_module(self.SE, self.S, self.ema_decay)
+        ema_inplace_module(self.GE, self.G, self.ema_decay)
 
     def reset_parameter_averaging(self):
         self.SE.load_state_dict(self.S.state_dict())
