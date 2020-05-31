@@ -155,6 +155,7 @@ A recent paper reported improved results if intermediate representations of the 
 
 ```python
 # feature quantize layers 1 and 2, with a dictionary size of 512 each
+# do not put a space after the comma in the list!
 $ stylegan2_pytorch --data ./data --fq-layers [1,2] --fq-dict-size 512
 ```
 
@@ -164,6 +165,21 @@ I have tried contrastive learning on the discriminator (in step with the usual G
 
 ```python
 $ stylegan2_pytorch --data ./data --cl-reg
+```
+
+### Attention
+
+This framework also allows for you to add self-attention to the designated layers of the discriminator, which have been shown to improve results from the SAGAN paper. To cut down on computation, I have used a more efficient form of self-attention called <a href="https://github.com/lucidrains/axial-attention">Axial attention</a>.
+
+```python
+# add self attention after the output of layer 1
+$ stylegan2_pytorch --data ./data --attn-layers 1
+```
+
+```python
+# add self attention after the output of layers 2 and 3
+# do not put a space after the comma in the list!
+$ stylegan2_pytorch --data ./data --attn-layers [2,3]
 ```
 
 ## Appreciation
@@ -211,5 +227,15 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
   title   = {11K Hands: gender recognition and biometric identification using a large dataset of hand images},
   author  = {Afifi, Mahmoud},
   journal = {Multimedia Tools and Applications}
+}
+```
+
+```bibtex
+@misc{zhang2018selfattention,
+    title   = {Self-Attention Generative Adversarial Networks},
+    author  = {Han Zhang and Ian Goodfellow and Dimitris Metaxas and Augustus Odena},
+    year    = {2018},
+    eprint  = {1805.08318},
+    archivePrefix = {arXiv}
 }
 ```

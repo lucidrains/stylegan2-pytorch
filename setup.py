@@ -4,7 +4,7 @@ setup(
   name = 'stylegan2_pytorch',
   packages = find_packages(),
   scripts=['bin/stylegan2_pytorch'],
-  version = '0.7.2',
+  version = '0.8.1',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
@@ -21,7 +21,8 @@ setup(
       'torchvision',
       'pillow',
       'torch_optimizer',
-      'contrastive_learner>=0.1.0'
+      'contrastive_learner>=0.1.0',
+      'axial-attention>=0.0.2'
   ],
   classifiers=[
       'Development Status :: 4 - Beta',

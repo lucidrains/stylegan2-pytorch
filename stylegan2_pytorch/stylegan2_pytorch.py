@@ -22,6 +22,8 @@ import torchvision
 from torchvision import transforms
 
 from contrastive_learner import ContrastiveLearner
+from axial_attention import AxialAttention
+
 
 from PIL import Image
 from pathlib import Path
@@ -59,6 +61,9 @@ def cycle(iterable):
     while True:
         for i in iterable:
             yield i
+
+def cast_list(el):
+    return el if isinstance(el, list) else [el]
 
 def is_empty(t):
     return t.nelement() == 0
@@ -227,6 +232,25 @@ class VectorQuantize(nn.Module):
 
         quantize = quantize.permute(0, 3, 1, 2)
         return quantize, loss
+
+# attention related classes
+
+class Rezero(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+        self.g = nn.Parameter(torch.zeros(1))
+    def forward(self, x):
+        return self.fn(x) * self.g
+
+class AxialAttentionLayers(nn.Module):
+    def __init__(self, dim, depth, dim_index=1, heads=1):
+        super().__init__()
+        self.nets = nn.ModuleList([Rezero(AxialAttention(dim=dim, heads = heads, dim_index=dim_index, dim_heads=16)) for _ in range(depth)])
+    def forward(self, x):
+        for net in self.nets:
+            x = net(x) + x
+        return x
 
 # stylegan2 classes
 
@@ -400,7 +424,7 @@ class Generator(nn.Module):
         return rgb
 
 class Discriminator(nn.Module):
-    def __init__(self, image_size, network_capacity = 16, fq_layers = [], fq_dict_size = 256, transparent = False):
+    def __init__(self, image_size, network_capacity = 16, fq_layers = [], fq_dict_size = 256, attn_layers = [], transparent = False):
         super().__init__()
         num_layers = int(log2(image_size) - 1)
         num_init_filters = 3 if not transparent else 4
@@ -411,22 +435,25 @@ class Discriminator(nn.Module):
 
         blocks = []
         quantize_blocks = []
+        attn_blocks = []
 
         for ind, (in_chan, out_chan) in enumerate(chan_in_out):
+            num_layer = ind + 1
             is_not_last = ind < (len(chan_in_out) - 1)
 
-            block = DiscriminatorBlock(
-                in_chan,
-                out_chan,
-                downsample = is_not_last
-            )
+            block = DiscriminatorBlock(in_chan, out_chan, downsample = is_not_last)
             blocks.append(block)
 
-            quantize_fn = VectorQuantize(out_chan, fq_dict_size) if (ind + 1)  in fq_layers else None
+            attn_fn = AxialAttentionLayers(dim = out_chan, depth = 2, dim_index = 1, heads=8) if num_layer in attn_layers else None
+            attn_blocks.append(attn_fn)
+
+            quantize_fn = VectorQuantize(out_chan, fq_dict_size) if num_layer in fq_layers else None
             quantize_blocks.append(quantize_fn)
 
-        self.quantize_blocks = nn.ModuleList(quantize_blocks)
         self.blocks = nn.ModuleList(blocks)
+        self.attn_blocks = nn.ModuleList(attn_blocks)
+        self.quantize_blocks = nn.ModuleList(quantize_blocks)
+
         latent_dim = 2 * 2 * filters[-1]
 
         self.flatten = Flatten()
@@ -437,8 +464,11 @@ class Discriminator(nn.Module):
 
         quantize_loss = torch.zeros(1).to(x)
 
-        for (block, q_block) in zip(self.blocks, self.quantize_blocks):
+        for (block, attn_block, q_block) in zip(self.blocks, self.attn_blocks, self.quantize_blocks):
             x = block(x)
+
+            if attn_block is not None:
+                x = attn_block(x)
 
             if q_block is not None:
                 x, loss = q_block(x)
@@ -449,7 +479,7 @@ class Discriminator(nn.Module):
         return x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, fq_layers = [], fq_dict_size = 256):
+    def __init__(self, image_size, latent_dim = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, fq_layers = [], fq_dict_size = 256, attn_layers = []):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -457,7 +487,7 @@ class StyleGAN2(nn.Module):
 
         self.S = StyleVectorizer(latent_dim, style_depth)
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
-        self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, transparent = transparent)
+        self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent)
 
         self.SE = StyleVectorizer(latent_dim, style_depth)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
@@ -503,7 +533,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -516,8 +546,10 @@ class Trainer():
         self.image_size = image_size
         self.network_capacity = network_capacity
         self.transparent = transparent
-        self.fq_layers = fq_layers if isinstance(fq_layers, list) else [fq_layers]
+        self.fq_layers = cast_list(fq_layers)
         self.fq_dict_size = fq_dict_size
+
+        self.attn_layers = cast_list(attn_layers)
 
         self.lr = lr
         self.batch_size = batch_size
@@ -553,7 +585,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, fp16 = self.fp16, cl_reg = self.cl_reg, *args, **kwargs)
+        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, *args, **kwargs)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -565,12 +597,12 @@ class Trainer():
         self.transparent = config['transparent']
         self.fq_layers = config['fq_layers']
         self.fq_dict_size = config['fq_dict_size']
-
+        self.attn_layers = config.pop('attn_layers', [])
         del self.GAN
         self.init_GAN()
 
     def config(self):
-        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size}
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers}
 
     def set_data_src(self, folder):
         self.dataset = Dataset(folder, self.image_size, transparent = self.transparent)
