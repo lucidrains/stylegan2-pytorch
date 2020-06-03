@@ -22,8 +22,6 @@ import torchvision
 from torchvision import transforms
 
 from contrastive_learner import ContrastiveLearner
-from axial_attention import AxialAttention
-
 
 from PIL import Image
 from pathlib import Path
@@ -48,9 +46,25 @@ EPS = 1e-8
 class NanException(Exception):
     pass
 
+class EMA():
+    def __init__(self, beta):
+        super().__init__()
+        self.beta = beta
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.beta + (1 - self.beta) * new
+
 class Flatten(nn.Module):
     def forward(self, x):
         return x.reshape(x.shape[0], -1)
+
+class Residual(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+    def forward(self, x):
+        return self.fn(x) + x
 
 # helpers
 
@@ -66,7 +80,9 @@ def cast_list(el):
     return el if isinstance(el, list) else [el]
 
 def is_empty(t):
-    return t.nelement() == 0
+    if isinstance(t, torch.Tensor):
+        return t.nelement() == 0
+    return t is None
 
 def raise_if_nan(t):
     if torch.isnan(t):
@@ -175,17 +191,7 @@ class Dataset(data.Dataset):
 # exponential moving average helpers
 
 def ema_inplace(moving_avg, new, decay):
-    if is_empty(moving_avg):
-        moving_avg.data.copy_(new)
-        return
     moving_avg.data.mul_(decay).add_(1 - decay, new)
-
-def ema_inplace_module(moving_avg_module, new, decay):
-    for current_params, ma_params in zip(moving_avg_module.parameters(), new.parameters()):
-        old_weight, up_weight = ma_params.data, current_params.data
-        ema_inplace(old_weight, up_weight, decay)
-
-# vector quantization class
 
 def laplace_smoothing(x, n_categories, eps=1e-5):
     return (x + eps) / (x.sum() + n_categories * eps)
@@ -243,14 +249,36 @@ class Rezero(nn.Module):
     def forward(self, x):
         return self.fn(x) * self.g
 
-class AxialAttentionLayers(nn.Module):
-    def __init__(self, dim, depth, dim_index=1, heads=1):
+class EfficientAttention(nn.Module):
+    def __init__(self, chan, key_dim, value_dim, heads = 8):
         super().__init__()
-        self.nets = nn.ModuleList([Rezero(AxialAttention(dim=dim, heads = heads, dim_index=dim_index, dim_heads=16)) for _ in range(depth)])
+        assert (key_dim % heads) == 0, 'key dimension must be divisible by number of heads'
+        assert (value_dim % heads) == 0, 'value dimension must be divisible by number of heads'
+
+        self.chan = chan
+        self.key_dim = key_dim
+        self.value_dim = value_dim
+        self.heads = heads
+        
+        self.to_qk = nn.Conv2d(chan, key_dim * 2, 1)
+        self.to_v = nn.Conv2d(chan, value_dim, 1)
+        self.to_out = nn.Conv2d(value_dim, chan, 1)
+
     def forward(self, x):
-        for net in self.nets:
-            x = net(x) + x
-        return x
+        b, _, h, w = x.shape
+
+        q, k, v = (*self.to_qk(x).chunk(2, dim=1), self.to_v(x))
+        reshape_fn = lambda x: x.reshape(b, self.heads, -1, h * w)
+        q, k, v = map(reshape_fn, (q, k, v))
+
+        k = k.softmax(dim=3)
+        q = q.softmax(dim=2)
+
+        context = torch.einsum('bhdn,bhen->bhde', k, v)
+        out = torch.einsum('bhdn,bhde->bhen', q, context)
+        out = out.reshape(b, -1, h, w)
+        out = self.to_out(out)
+        return out
 
 # stylegan2 classes
 
@@ -439,12 +467,15 @@ class Discriminator(nn.Module):
 
         for ind, (in_chan, out_chan) in enumerate(chan_in_out):
             num_layer = ind + 1
-            is_not_last = ind < (len(chan_in_out) - 1)
+            is_not_last = ind != (len(chan_in_out) - 1)
 
             block = DiscriminatorBlock(in_chan, out_chan, downsample = is_not_last)
             blocks.append(block)
 
-            attn_fn = AxialAttentionLayers(dim = out_chan, depth = 2, dim_index = 1, heads=8) if num_layer in attn_layers else None
+            attn_fn = nn.Sequential(*[
+                Residual(Rezero(EfficientAttention(out_chan, 512, 512))) for _ in range(2)
+            ]) if num_layer in attn_layers else None
+
             attn_blocks.append(attn_fn)
 
             quantize_fn = VectorQuantize(out_chan, fq_dict_size) if num_layer in fq_layers else None
@@ -483,7 +514,7 @@ class StyleGAN2(nn.Module):
         super().__init__()
         self.lr = lr
         self.steps = steps
-        self.ema_decay = 0.995
+        self.ema_updater = EMA(0.995)
 
         self.S = StyleVectorizer(latent_dim, style_depth)
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
@@ -522,8 +553,13 @@ class StyleGAN2(nn.Module):
             nn.init.zeros_(block.to_noise2.bias)
 
     def EMA(self):
-        ema_inplace_module(self.SE, self.S, self.ema_decay)
-        ema_inplace_module(self.GE, self.G, self.ema_decay)
+        def update_moving_average(ma_model, current_model):
+            for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+                old_weight, up_weight = ma_params.data, current_params.data
+                ma_params.data = self.ema_updater.update_average(old_weight, up_weight)
+
+        update_moving_average(self.SE, self.S)
+        update_moving_average(self.GE, self.G)
 
     def reset_parameter_averaging(self):
         self.SE.load_state_dict(self.S.state_dict())
@@ -562,6 +598,8 @@ class Trainer():
         self.av = None
         self.trunc_psi = trunc_psi
 
+        self.pl_mean = 0
+
         self.gradient_accumulate_every = gradient_accumulate_every
 
         assert not fp16 or fp16 and APEX_AVAILABLE, 'Apex is not available for you to use mixed precision training'
@@ -574,11 +612,8 @@ class Trainer():
         self.last_gp_loss = 0
         self.last_cr_loss = 0
         self.q_loss = 0
-        self.pl_loss = 0
 
-        self.pl_mean = torch.empty(1).cuda()
-        self.pl_ema_decay = 0.99
-
+        self.pl_length_ma = EMA(0.99)
         self.init_folders()
 
         self.loader = None
@@ -723,8 +758,7 @@ class Trainer():
         # calculate moving averages
 
         if apply_path_penalty and not np.isnan(avg_pl_length):
-            ema_inplace(self.pl_mean, avg_pl_length, self.pl_ema_decay)
-            self.pl_loss = self.pl_mean.item()
+            self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
 
         if self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()
@@ -826,7 +860,7 @@ class Trainer():
         return generated_images.clamp_(0., 1.)
 
     def print_log(self):
-        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_loss:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')
+        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')

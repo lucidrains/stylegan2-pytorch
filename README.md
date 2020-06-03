@@ -239,3 +239,17 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
     archivePrefix = {arXiv}
 }
 ```
+
+```bibtex
+@article{shen2019efficient,
+  author    = {Zhuoran Shen and
+               Mingyuan Zhang and
+               Haiyu Zhao and
+               Shuai Yi and
+               Hongsheng Li},
+  title     = {Efficient Attention: Attention with Linear Complexities},
+  journal   = {CoRR},  
+  year      = {2018},
+  url       = {http://arxiv.org/abs/1812.01243},
+}
+```
