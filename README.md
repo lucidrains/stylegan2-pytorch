@@ -169,7 +169,7 @@ $ stylegan2_pytorch --data ./data --cl-reg
 
 ### Attention
 
-This framework also allows for you to add self-attention to the designated layers of the discriminator, which have been shown to improve results from the SAGAN paper. To cut down on computation, I have used a more efficient form of self-attention called <a href="https://github.com/lucidrains/axial-attention">Axial attention</a>.
+This framework also allows for you to add self-attention to the designated layers of the discriminator, which have been shown to improve results, both from the SAGAN paper and from my personal experiments.
 
 ```python
 # add self attention after the output of layer 1
@@ -177,9 +177,9 @@ $ stylegan2_pytorch --data ./data --attn-layers 1
 ```
 
 ```python
-# add self attention after the output of layers 2 and 3
+# add self attention after the output of layers 1 and 2
 # do not put a space after the comma in the list!
-$ stylegan2_pytorch --data ./data --attn-layers [2,3]
+$ stylegan2_pytorch --data ./data --attn-layers [1,2]
 ```
 
 ## Appreciation
