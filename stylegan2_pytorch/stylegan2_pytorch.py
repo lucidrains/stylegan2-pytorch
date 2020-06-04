@@ -250,32 +250,33 @@ class Rezero(nn.Module):
         return self.fn(x) * self.g
 
 class EfficientAttention(nn.Module):
-    def __init__(self, chan, key_dim, value_dim, heads = 8):
+    def __init__(self, chan, key_dim = 64, value_dim = 64, heads = 8):
         super().__init__()
-        assert (key_dim % heads) == 0, 'key dimension must be divisible by number of heads'
-        assert (value_dim % heads) == 0, 'value dimension must be divisible by number of heads'
 
         self.chan = chan
         self.key_dim = key_dim
         self.value_dim = value_dim
         self.heads = heads
         
-        self.to_qk = nn.Conv2d(chan, key_dim * 2, 1)
+        self.to_q = nn.Conv2d(chan, key_dim * heads, 1)
+        self.to_k = nn.Conv2d(chan, key_dim, 1)
         self.to_v = nn.Conv2d(chan, value_dim, 1)
-        self.to_out = nn.Conv2d(value_dim, chan, 1)
+        self.to_out = nn.Conv2d(value_dim * heads, chan, 1)
 
     def forward(self, x):
         b, _, h, w = x.shape
 
-        q, k, v = (*self.to_qk(x).chunk(2, dim=1), self.to_v(x))
-        reshape_fn = lambda x: x.reshape(b, self.heads, -1, h * w)
-        q, k, v = map(reshape_fn, (q, k, v))
+        q, k, v = (self.to_q(x), self.to_k(x), self.to_v(x))
 
-        k = k.softmax(dim=3)
+        q = q.reshape(b, self.heads, -1, h * w)
+        k = k.reshape(b, -1, h * w)
+        v = v.reshape(b, -1, h * w)
+
+        k = k.softmax(dim=2)
         q = q.softmax(dim=2)
 
-        context = torch.einsum('bhdn,bhen->bhde', k, v)
-        out = torch.einsum('bhdn,bhde->bhen', q, context)
+        context = torch.einsum('bdn,ben->bde', k, v)
+        out = torch.einsum('bhdn,bde->bhen', q, context)
         out = out.reshape(b, -1, h, w)
         out = self.to_out(out)
         return out
@@ -473,7 +474,7 @@ class Discriminator(nn.Module):
             blocks.append(block)
 
             attn_fn = nn.Sequential(*[
-                Residual(Rezero(EfficientAttention(out_chan, 512, 512))) for _ in range(2)
+                Residual(Rezero(EfficientAttention(out_chan))) for _ in range(2)
             ]) if num_layer in attn_layers else None
 
             attn_blocks.append(attn_fn)
