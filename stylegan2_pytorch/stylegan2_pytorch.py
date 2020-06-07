@@ -669,6 +669,17 @@ class Trainer():
             self.GAN.D_opt.zero_grad()
 
             for i in range(self.gradient_accumulate_every):
+                get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
+                style = get_latents_fn(batch_size, num_layers, latent_dim)
+                noise = image_noise(batch_size, image_size)
+
+                w_space = latent_to_w(self.GAN.S, style)
+                w_styles = styles_def_to_tensor(w_space)
+
+                generated_images = self.GAN.G(w_styles, noise)
+                self.GAN.D_cl(generated_images.clone().detach(), accumulate=True)
+
+            for i in range(self.gradient_accumulate_every):
                 image_batch = next(self.loader).cuda()
                 self.GAN.D_cl(image_batch, accumulate=True)
 

@@ -253,3 +253,13 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
   url       = {http://arxiv.org/abs/1812.01243},
 }
 ```
+
+```bibtex
+@misc{zhao2020image,
+    title  = {Image Augmentations for GAN Training},
+    author = {Zhengli Zhao and Zizhao Zhang and Ting Chen and Sameer Singh and Han Zhang},
+    year   = {2020},
+    eprint = {2006.02595},
+    archivePrefix = {arXiv}
+}
+```
