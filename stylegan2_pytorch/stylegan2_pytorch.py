@@ -662,22 +662,24 @@ class Trainer():
 
         apply_gradient_penalty = self.steps % 4 == 0
         apply_path_penalty = self.steps % 32 == 0
+        apply_cl_reg_to_generated = self.steps > 20000
 
         backwards = partial(loss_backwards, self.fp16)
 
         if self.GAN.D_cl is not None:
             self.GAN.D_opt.zero_grad()
 
-            for i in range(self.gradient_accumulate_every):
-                get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
-                style = get_latents_fn(batch_size, num_layers, latent_dim)
-                noise = image_noise(batch_size, image_size)
+            if apply_cl_reg_to_generated:
+                for i in range(self.gradient_accumulate_every):
+                    get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
+                    style = get_latents_fn(batch_size, num_layers, latent_dim)
+                    noise = image_noise(batch_size, image_size)
 
-                w_space = latent_to_w(self.GAN.S, style)
-                w_styles = styles_def_to_tensor(w_space)
+                    w_space = latent_to_w(self.GAN.S, style)
+                    w_styles = styles_def_to_tensor(w_space)
 
-                generated_images = self.GAN.G(w_styles, noise)
-                self.GAN.D_cl(generated_images.clone().detach(), accumulate=True)
+                    generated_images = self.GAN.G(w_styles, noise)
+                    self.GAN.D_cl(generated_images.clone().detach(), accumulate=True)
 
             for i in range(self.gradient_accumulate_every):
                 image_batch = next(self.loader).cuda()
