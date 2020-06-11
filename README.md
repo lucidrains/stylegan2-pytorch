@@ -79,6 +79,21 @@ If a previous checkpoint contained a better generator, (which often happens as g
 $ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
+### Attention
+
+This framework also allows for you to add an efficient form of self-attention to the designated layers of the discriminator (and the symmetric layer of the generator), which will greatly improve results. The more attention you can afford, the better!
+
+```python
+# add self attention after the output of layer 1
+$ stylegan2_pytorch --data ./data --attn-layers 1
+```
+
+```python
+# add self attention after the output of layers 1 and 2
+# do not put a space after the comma in the list!
+$ stylegan2_pytorch --data ./data --attn-layers [1,2]
+```
+
 ## Bonus
 
 Training on transparent images
@@ -171,21 +186,6 @@ I have tried contrastive learning on the discriminator (in step with the usual G
 
 ```python
 $ stylegan2_pytorch --data ./data --cl-reg
-```
-
-### Attention
-
-This framework also allows for you to add self-attention to the designated layers of the discriminator (and the symmetric layer of the generator), which have been shown to improve results, both from the SAGAN paper and from my personal experiments.
-
-```python
-# add self attention after the output of layer 1
-$ stylegan2_pytorch --data ./data --attn-layers 1
-```
-
-```python
-# add self attention after the output of layers 1 and 2
-# do not put a space after the comma in the list!
-$ stylegan2_pytorch --data ./data --attn-layers [1,2]
 ```
 
 ## Appreciation
