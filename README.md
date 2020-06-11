@@ -169,7 +169,7 @@ $ stylegan2_pytorch --data ./data --cl-reg
 
 ### Attention
 
-This framework also allows for you to add self-attention to the designated layers of the discriminator, which have been shown to improve results, both from the SAGAN paper and from my personal experiments.
+This framework also allows for you to add self-attention to the designated layers of the discriminator (and the symmetric layer of the generator), which have been shown to improve results, both from the SAGAN paper and from my personal experiments.
 
 ```python
 # add self attention after the output of layer 1

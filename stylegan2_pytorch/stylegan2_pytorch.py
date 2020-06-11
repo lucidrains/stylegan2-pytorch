@@ -341,7 +341,7 @@ class DiscriminatorBlock(nn.Module):
         return x
 
 class Generator(nn.Module):
-    def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False):
+    def __init__(self, image_size, latent_dim, network_capacity = 16, transparent = False, attn_layers = []):
         super().__init__()
         self.image_size = image_size
         self.latent_dim = latent_dim
@@ -353,9 +353,18 @@ class Generator(nn.Module):
         in_out_pairs = zip(filters[0:-1], filters[1:])
 
         self.blocks = nn.ModuleList([])
+        self.attns = nn.ModuleList([])
+
         for ind, (in_chan, out_chan) in enumerate(in_out_pairs):
             not_first = ind != 0
             not_last = ind != (self.num_layers - 1)
+            num_layer = self.num_layers - ind
+
+            attn_fn = nn.Sequential(*[
+                Residual(Rezero(ImageLinearAttention(in_chan))) for _ in range(2)
+            ]) if num_layer in attn_layers else None
+
+            self.attns.append(attn_fn)
 
             block = GeneratorBlock(
                 latent_dim,
@@ -374,7 +383,9 @@ class Generator(nn.Module):
         styles = styles.transpose(0, 1)
 
         rgb = None
-        for style, block in zip(styles, self.blocks):
+        for style, block, attn in zip(styles, self.blocks, self.attns):
+            if attn is not None:
+                x = attn(x)
             x, rgb = block(x, rgb, style, input_noise)
 
         return rgb
@@ -445,11 +456,11 @@ class StyleGAN2(nn.Module):
         self.ema_updater = EMA(0.995)
 
         self.S = StyleVectorizer(latent_dim, style_depth)
-        self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
+        self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent)
 
         self.SE = StyleVectorizer(latent_dim, style_depth)
-        self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent)
+        self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers)
 
         # experimental contrastive loss discriminator regularization
         self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten') if cl_reg else None
