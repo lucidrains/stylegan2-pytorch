@@ -67,6 +67,12 @@ Once you have finished training, you can generate images from your latest checkp
 $ stylegan2_pytorch  --generate
 ```
 
+To generate a video of a interpolation through two random points in latent space.
+
+```bash
+$ stylegan2_pytorch --generate-interpolation
+```
+
 If a previous checkpoint contained a better generator, (which often happens as generators start degrading towards the end of training), you can load from a previous checkpoint with another flag
 
 ```bash

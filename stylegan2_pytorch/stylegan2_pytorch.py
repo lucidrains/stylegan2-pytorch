@@ -3,6 +3,7 @@ import sys
 import math
 import fire
 import json
+from tqdm import tqdm
 from math import floor, log2
 from random import random
 from shutil import rmtree
@@ -156,6 +157,14 @@ def styles_def_to_tensor(styles_def):
 def set_requires_grad(model, bool):
     for p in model.parameters():
         p.requires_grad = bool
+
+def slerp(val, low, high):
+    low_norm = low / torch.norm(low, dim=1, keepdim=True)
+    high_norm = high / torch.norm(high, dim=1, keepdim=True)
+    omega = torch.acos((low_norm * high_norm).sum(1))
+    so = torch.sin(omega)
+    res = (torch.sin((1.0 - val) * omega) / so).unsqueeze(1) * low + (torch.sin(val * omega) / so).unsqueeze(1) * high
+    return res
 
 # dataset
 
@@ -743,13 +752,6 @@ class Trainer():
         self.GAN.eval()
         ext = 'jpg' if not self.transparent else 'png'
         num_rows = num_image_tiles
-
-        def generate_images(stylizer, generator, latents, noise):
-            w = latent_to_w(stylizer, latents)
-            w_styles = styles_def_to_tensor(w)
-            generated_images = evaluate_in_chunks(self.batch_size, generator, w_styles, noise)
-            generated_images.clamp_(0., 1.)
-            return generated_images
     
         latent_dim = self.GAN.G.latent_dim
         image_size = self.GAN.G.image_size
@@ -810,6 +812,35 @@ class Trainer():
         w_styles = styles_def_to_tensor(w_space)
         generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi)
         return generated_images.clamp_(0., 1.)
+
+    @torch.no_grad()
+    def generate_interpolation(self, num = 0, num_image_tiles = 8, trunc = 1.0):
+        self.GAN.eval()
+        ext = 'jpg' if not self.transparent else 'png'
+        num_rows = num_image_tiles
+
+        latent_dim = self.GAN.G.latent_dim
+        image_size = self.GAN.G.image_size
+        num_layers = self.GAN.G.num_layers
+
+        # latents and noise
+
+        latents_low = noise(num_rows ** 2, latent_dim)
+        latents_high = noise(num_rows ** 2, latent_dim)
+        n = image_noise(num_rows ** 2, image_size)
+
+        ratios = torch.linspace(0., 8., 100)
+
+        frames = []
+        for ratio in tqdm(ratios):
+            interp_latents = slerp(ratio, latents_low, latents_high)
+            latents = [(interp_latents, num_layers)]
+            generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
+            images_grid = torchvision.utils.make_grid(generated_images, nrow = num_rows)
+            pil_image = transforms.ToPILImage()(images_grid.cpu())
+            frames.append(pil_image)
+
+        frames[0].save(str(self.results_dir / self.name / f'{str(num)}.gif'), save_all=True, append_images=frames[1:], duration=80, loop=0, optimize=True)
 
     def print_log(self):
         print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')

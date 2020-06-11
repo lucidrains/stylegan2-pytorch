@@ -22,6 +22,7 @@ def train_from_folder(
     num_workers =  None,
     save_every = 1000,
     generate = False,
+    generate_interpolation = False,
     num_image_tiles = 8,
     trunc_psi = 0.75,
     fp16 = False,
@@ -61,6 +62,14 @@ def train_from_folder(
         samples_name = f'generated-{timestamp}'
         model.evaluate(samples_name, num_image_tiles)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
+        return
+
+    if generate_interpolation:
+        now = datetime.now()
+        timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
+        samples_name = f'generated-{timestamp}'
+        model.generate_interpolation(samples_name, num_image_tiles)
+        print(f'interpolation generated at {results_dir}/{name}/{samples_name}')
         return
 
     model.set_data_src(data)
