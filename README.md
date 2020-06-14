@@ -188,6 +188,15 @@ I have tried contrastive learning on the discriminator (in step with the usual G
 $ stylegan2_pytorch --data ./data --cl-reg
 ```
 
+### Non-constant 4x4 Block
+
+By default, the StyleGAN architecture styles a constant learned 4x4 block as it is progressively upsampled. This is an experimental feature that makes it so the 4x4 block is learned from the style vector `w` instead.
+
+```python
+$ stylegan2_pytorch --data ./data --no-const
+```
+
+
 ## Appreciation
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0

@@ -29,7 +29,8 @@ def train_from_folder(
     cl_reg = False,
     fq_layers = [],
     fq_dict_size = 256,
-    attn_layers = []
+    attn_layers = [],
+    no_const = False
 ):
     model = Trainer(
         name,        
@@ -48,7 +49,8 @@ def train_from_folder(
         cl_reg = cl_reg,
         fq_layers = fq_layers,
         fq_dict_size = fq_dict_size,
-        attn_layers = attn_layers
+        attn_layers = attn_layers,
+        no_const = no_const
     )
 
     if not new:
