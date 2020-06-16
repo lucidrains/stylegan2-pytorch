@@ -16,7 +16,7 @@ from torch import nn
 from torch.utils import data
 import torch.nn.functional as F
 
-from torch_optimizer import DiffGrad
+from adamp import AdamP
 from torch.autograd import grad as torch_grad
 
 import torchvision
@@ -490,8 +490,8 @@ class StyleGAN2(nn.Module):
         set_requires_grad(self.GE, False)
 
         generator_params = list(self.G.parameters()) + list(self.S.parameters())
-        self.G_opt = DiffGrad(generator_params, lr = self.lr, betas=(0.5, 0.9))
-        self.D_opt = DiffGrad(self.D.parameters(), lr = self.lr, betas=(0.5, 0.9))
+        self.G_opt = AdamP(generator_params, lr = self.lr, betas=(0.5, 0.9))
+        self.D_opt = AdamP(self.D.parameters(), lr = self.lr, betas=(0.5, 0.9))
 
         self._init_weights()
         self.reset_parameter_averaging()
