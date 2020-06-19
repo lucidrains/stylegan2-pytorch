@@ -125,6 +125,17 @@ def gradient_penalty(images, output, weight = 10):
     gradients = gradients.view(batch_size, -1)
     return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
+def calc_pl_lengths(styles, images):
+    num_pixels = images.shape[2] * images.shape[3]
+    pl_noise = torch.randn(images.shape).cuda() / math.sqrt(num_pixels)
+    outputs = (images * pl_noise).sum()
+
+    pl_grads = torch_grad(outputs=outputs, inputs=styles,
+                          grad_outputs=torch.ones(outputs.shape).cuda(),
+                          create_graph=True, retain_graph=True, only_inputs=True)[0]
+
+    return (pl_grads ** 2).sum(dim=2).mean(dim=1).sqrt()
+
 def noise(n, latent_dim):
     return torch.randn(n, latent_dim).cuda()
 
@@ -710,10 +721,7 @@ class Trainer():
             gen_loss = loss
 
             if apply_path_penalty:
-                std = 0.1 / (w_styles.std(dim = 0, keepdim = True) + EPS)
-                w_styles_2 = w_styles + torch.randn(w_styles.shape).cuda() / (std + EPS)
-                pl_images = self.GAN.G(w_styles_2, noise)
-                pl_lengths = ((pl_images - generated_images) ** 2).mean(dim = (1, 2, 3))
+                pl_lengths = calc_pl_lengths(w_styles, generated_images)
                 avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
 
                 if not is_empty(self.pl_mean):
