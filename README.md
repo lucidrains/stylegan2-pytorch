@@ -79,7 +79,22 @@ If a previous checkpoint contained a better generator, (which often happens as g
 $ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
-### Attention
+## Low amounts of Training Data
+
+In the past, GANs needed a lot of data to learn how to generate well. The faces model took **70k** high quality images from Flickr, as an example.
+
+However, in the month of May 2020, researchers all across the world independently converged on a simple technique to reduce that number to as low as **1-2k**. That simple idea was to differentiably augment all images, generated or real, going into the discriminator during training.
+
+If one were to augment at a low enough probability, the augmentations will not 'leak' into the generations.
+
+In the setting of low data, you can use the feature with a simple flag.
+
+```bash
+# find a suitable probability between 0. -> 0.7 at maximum
+$ stylegan2_pytorch --data ./data --aug-prob 0.25
+```
+
+## Attention
 
 This framework also allows for you to add an efficient form of self-attention to the designated layers of the discriminator (and the symmetric layer of the generator), which will greatly improve results. The more attention you can afford, the better!
 
@@ -276,5 +291,16 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
     year   = {2020},
     eprint = {2006.02595},
     archivePrefix = {arXiv}
+}
+```
+
+```bibtex
+@misc{karras2020training,
+    title   = {Training Generative Adversarial Networks with Limited Data},
+    author  = {Tero Karras and Miika Aittala and Janne Hellsten and Samuli Laine and Jaakko Lehtinen and Timo Aila},
+    year    = {2020},
+    eprint  = {2006.06676},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
 }
 ```

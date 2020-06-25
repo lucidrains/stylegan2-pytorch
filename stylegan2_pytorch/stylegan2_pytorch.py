@@ -213,7 +213,6 @@ class Dataset(data.Dataset):
         self.transform = transforms.Compose([
             transforms.Lambda(convert_image_fn),
             transforms.Lambda(partial(resize_to_minimum_size, image_size)),
-            transforms.RandomHorizontalFlip(),
             transforms.Resize(image_size),
             transforms.CenterCrop(image_size),
             transforms.ToTensor(),
@@ -227,6 +226,41 @@ class Dataset(data.Dataset):
         path = self.paths[index]
         img = Image.open(path)
         return self.transform(img)
+
+# augmentations
+
+def random_float(lo, hi):
+    return lo + (hi - lo) * random()
+
+def random_crop_and_resize(tensor, scale):
+    b, c, h, _ = tensor.shape
+    new_width = int(h * scale)
+    delta = h - new_width
+    h_delta = int(random() * delta)
+    w_delta = int(random() * delta)
+    cropped = tensor[:, :, h_delta:(h_delta + new_width), w_delta:(w_delta + new_width)].clone()
+    return F.interpolate(cropped, size=(h, h))
+
+def random_hflip(tensor, prob):
+    if prob > random():
+        return tensor
+    return torch.flip(tensor, dims=(3,))
+
+class AugWrapper(nn.Module):
+    def __init__(self, D, image_size):
+        super().__init__()
+        self.D = D
+
+    def forward(self, images, prob = 0., detach = False):
+        if random() < prob:
+            random_scale = random_float(0.5, 0.9)
+            images = random_hflip(images, prob=0.5)
+            images = random_crop_and_resize(images, scale = random_scale)
+
+        if detach:
+            images.detach_()
+
+        return self.D(images)
 
 # stylegan2 classes
 
@@ -495,7 +529,10 @@ class StyleGAN2(nn.Module):
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, no_const = no_const)
 
         # experimental contrastive loss discriminator regularization
-        self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten') if cl_reg else None
+        self.D_cl = None
+
+        # wrapper for augmenting all images going into the discriminator
+        self.D_aug = AugWrapper(self.D, image_size)
 
         set_requires_grad(self.SE, False)
         set_requires_grad(self.GE, False)
@@ -540,7 +577,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -558,6 +595,7 @@ class Trainer():
 
         self.attn_layers = cast_list(attn_layers)
         self.no_const = no_const
+        self.aug_prob = aug_prob
 
         self.lr = lr
         self.batch_size = batch_size
@@ -632,6 +670,8 @@ class Trainer():
         latent_dim = self.GAN.G.latent_dim
         num_layers = self.GAN.G.num_layers
 
+        aug_prob   = self.aug_prob
+
         apply_gradient_penalty = self.steps % 4 == 0
         apply_path_penalty = self.steps % 32 == 0
         apply_cl_reg_to_generated = self.steps > 20000
@@ -677,11 +717,11 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = self.GAN.G(w_styles, noise)
-            fake_output, fake_q_loss = self.GAN.D(generated_images.clone().detach())
+            fake_output, fake_q_loss = self.GAN.D_aug(generated_images.clone().detach(), detach = True, prob = aug_prob)
 
             image_batch = next(self.loader).cuda()
             image_batch.requires_grad_()
-            real_output, real_q_loss = self.GAN.D(image_batch)
+            real_output, real_q_loss = self.GAN.D_aug(image_batch, prob = aug_prob)
 
             divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
             disc_loss = divergence
@@ -716,7 +756,7 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = self.GAN.G(w_styles, noise)
-            fake_output, _ = self.GAN.D(generated_images)
+            fake_output, _ = self.GAN.D_aug(generated_images, prob = aug_prob)
             loss = fake_output.mean()
             gen_loss = loss
 
