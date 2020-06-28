@@ -884,7 +884,7 @@ class Trainer():
         return generated_images.clamp_(0., 1.)
 
     @torch.no_grad()
-    def generate_interpolation(self, num = 0, num_image_tiles = 8, trunc = 1.0):
+    def generate_interpolation(self, num = 0, num_image_tiles = 8, trunc = 1.0, save_frames = False):
         self.GAN.eval()
         ext = 'jpg' if not self.transparent else 'png'
         num_rows = num_image_tiles
@@ -907,10 +907,16 @@ class Trainer():
             latents = [(interp_latents, num_layers)]
             generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
             images_grid = torchvision.utils.make_grid(generated_images, nrow = num_rows)
-            pil_image = transforms.ToPILImage()(images_grid.cpu()).convert('RGB')
+            pil_image = transforms.ToPILImage()(images_grid.cpu())
             frames.append(pil_image)
 
         frames[0].save(str(self.results_dir / self.name / f'{str(num)}.gif'), save_all=True, append_images=frames[1:], duration=80, loop=0, optimize=True)
+
+        if save_frames:
+            folder_path = (self.results_dir / self.name / f'{str(num)}')
+            folder_path.mkdir(parents=True, exist_ok=True)
+            for ind, frame in enumerate(frames):
+                frame.save(str(folder_path / f'{str(ind)}.{ext}'))
 
     def print_log(self):
         print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')

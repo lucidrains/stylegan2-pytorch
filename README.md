@@ -73,6 +73,12 @@ To generate a video of a interpolation through two random points in latent space
 $ stylegan2_pytorch --generate-interpolation
 ```
 
+To save each individual frame of the interpolation
+
+```bash
+$ stylegan2_pytorch --generate-interpolation --save-frames
+```
+
 If a previous checkpoint contained a better generator, (which often happens as generators start degrading towards the end of training), you can load from a previous checkpoint with another flag
 
 ```bash
