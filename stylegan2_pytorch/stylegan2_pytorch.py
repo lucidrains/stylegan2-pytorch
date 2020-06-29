@@ -87,6 +87,13 @@ class PermuteToFrom(nn.Module):
         out = out.permute(0, 3, 1, 2)
         return out, loss
 
+# one layer of self-attention and feedforward, for images
+
+attn_and_ff = lambda chan: nn.Sequential(*[
+    Residual(Rezero(ImageLinearAttention(chan))),
+    Residual(Rezero(nn.Sequential(nn.Conv2d(chan, chan * 2, 1), leaky_relu(), nn.Conv2d(chan * 2, chan, 1))))
+])
+
 # helpers
 
 def default(value, d):
@@ -424,9 +431,7 @@ class Generator(nn.Module):
             not_last = ind != (self.num_layers - 1)
             num_layer = self.num_layers - ind
 
-            attn_fn = nn.Sequential(*[
-                Residual(Rezero(ImageLinearAttention(in_chan))) for _ in range(2)
-            ]) if num_layer in attn_layers else None
+            attn_fn = attn_and_ff(in_chan) if num_layer in attn_layers else None
 
             self.attns.append(attn_fn)
 
@@ -484,9 +489,7 @@ class Discriminator(nn.Module):
             block = DiscriminatorBlock(in_chan, out_chan, downsample = is_not_last)
             blocks.append(block)
 
-            attn_fn = nn.Sequential(*[
-                Residual(Rezero(ImageLinearAttention(out_chan))) for _ in range(2)
-            ]) if num_layer in attn_layers else None
+            attn_fn = attn_and_ff(out_chan) if num_layer in attn_layers else None
 
             attn_blocks.append(attn_fn)
 
