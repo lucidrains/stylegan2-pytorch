@@ -32,7 +32,8 @@ def train_from_folder(
     fq_dict_size = 256,
     attn_layers = [],
     no_const = False,
-    aug_prob = 0.
+    aug_prob = 0.,
+    dataset_aug_prob = 0.,
 ):
     model = Trainer(
         name,        
@@ -53,7 +54,8 @@ def train_from_folder(
         fq_dict_size = fq_dict_size,
         attn_layers = attn_layers,
         no_const = no_const,
-        aug_prob = aug_prob
+        aug_prob = aug_prob,
+        dataset_aug_prob = dataset_aug_prob
     )
 
     if not new:
