@@ -629,7 +629,7 @@ class Trainer():
         self.av = None
         self.trunc_psi = trunc_psi
 
-        self.pl_mean = 0
+        self.pl_mean = None
 
         self.gradient_accumulate_every = gradient_accumulate_every
 
