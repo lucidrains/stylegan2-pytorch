@@ -119,7 +119,7 @@ def cast_list(el):
 
 def is_empty(t):
     if isinstance(t, torch.Tensor):
-        return t.nelement() <= 1
+        return t.nelement() == 1
     return t is None
 
 def raise_if_nan(t):
