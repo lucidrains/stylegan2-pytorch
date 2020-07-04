@@ -933,7 +933,8 @@ class Trainer():
                 frame.save(str(folder_path / f'{str(ind)}.{ext}'))
 
     def print_log(self):
-        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {self.pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')
+        pl_mean = default(self.pl_mean, 0)
+        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')
