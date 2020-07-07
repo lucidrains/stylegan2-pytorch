@@ -392,7 +392,7 @@ class GeneratorBlock(nn.Module):
 class DiscriminatorBlock(nn.Module):
     def __init__(self, input_channels, filters, downsample=True):
         super().__init__()
-        self.conv_res = nn.Conv2d(input_channels, filters, 1)
+        self.conv_res = nn.Conv2d(input_channels, filters, 1, stride = (2 if downsample else 1))
 
         self.net = nn.Sequential(
             nn.Conv2d(input_channels, filters, 3, padding=1),
@@ -406,9 +406,9 @@ class DiscriminatorBlock(nn.Module):
     def forward(self, x):
         res = self.conv_res(x)
         x = self.net(x)
-        x = (x + res) * (1 / math.sqrt(2))
         if self.downsample is not None:
             x = self.downsample(x)
+        x = (x + res) * (1 / math.sqrt(2))
         return x
 
 class Generator(nn.Module):
