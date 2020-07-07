@@ -406,7 +406,7 @@ class DiscriminatorBlock(nn.Module):
     def forward(self, x):
         res = self.conv_res(x)
         x = self.net(x)
-        x = x + res
+        x = (x + res) * (1 / math.sqrt(2))
         if self.downsample is not None:
             x = self.downsample(x)
         return x
