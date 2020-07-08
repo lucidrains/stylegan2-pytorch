@@ -24,7 +24,6 @@ from torchvision import transforms
 
 from vector_quantize_pytorch import VectorQuantize
 from linear_attention_transformer import ImageLinearAttention
-from contrastive_learner import ContrastiveLearner
 
 from PIL import Image
 from pathlib import Path
@@ -548,9 +547,13 @@ class StyleGAN2(nn.Module):
         self.SE = StyleVectorizer(latent_dim, style_depth)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, no_const = no_const)
 
-        # experimental contrastive loss discriminator regularization
-        assert not (transparent and cl_reg), 'contrastive loss regularization does not work with transparent images yet'
-        self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten') if cl_reg else None
+        self.D_cl = None
+
+        if cl_reg:
+            from contrastive_learner import ContrastiveLearner
+            # experimental contrastive loss discriminator regularization
+            assert not transparent, 'contrastive loss regularization does not work with transparent images yet'
+            self.D_cl = ContrastiveLearner(self.D, image_size, hidden_layer='flatten')
 
         # wrapper for augmenting all images going into the discriminator
         self.D_aug = AugWrapper(self.D, image_size)
