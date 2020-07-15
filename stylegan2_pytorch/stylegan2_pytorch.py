@@ -40,7 +40,7 @@ num_cores = multiprocessing.cpu_count()
 
 # constants
 
-EXTS = ['jpg', 'png']
+EXTS = ['jpg', 'jpeg', 'png']
 EPS = 1e-8
 
 # helper classes
