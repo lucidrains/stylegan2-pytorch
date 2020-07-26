@@ -892,11 +892,10 @@ class Trainer():
         os.makedirs(real_path)
         os.makedirs(fake_path)
 
-        # copy the correct number of real images into results / name / fid_real
-        real_images = torch.cat([x for _, x in zip(range(num_batches), iter(self.loader))])
-
-        for j in range(real_images.size(0)):
-            torchvision.utils.save_image(real_images[j, :, :, :], real_path + '{}.png'.format(j))
+        for batch_num in range(num_batches):
+            real_batch = next(self.loader)
+            for k in range(real_batch.size(0)):
+                torchvision.utils.save_image(real_batch[k, :, :, :], real_path + '{}.png'.format(k + batch_num * self.batch_size))
 
         # generate a bunch of fake images in results / name / fid_fake
         self.GAN.eval()
