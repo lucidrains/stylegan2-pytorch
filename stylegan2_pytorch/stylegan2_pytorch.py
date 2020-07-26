@@ -880,6 +880,26 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
+    def calculate_fid(self, num_batches):
+        self.GAN.eval()
+        ext = 'jpg' if not self.transparent else 'png'
+
+        latent_dim = self.GAN.G.latent_dim
+        image_size = self.GAN.G.image_size
+        num_layers = self.GAN.G.num_layers
+
+        for batch_num in range(num_batches):
+            # latents and noise
+            latents = noise_list(self.batch_size, num_layers, latent_dim)
+            n = image_noise(self.batch_size, image_size)
+
+            # moving averages
+            generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
+
+            for j in range(generated_images.size(0)):
+                torchvision.utils.save_image(generated_images[j, :, :, :], str(self.results_dir / self.name / 'fid' / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
+
+    @torch.no_grad()
     def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
         latent_dim = G.latent_dim
 
@@ -944,6 +964,7 @@ class Trainer():
 
     def init_folders(self):
         (self.results_dir / self.name).mkdir(parents=True, exist_ok=True)
+        (self.results_dir / self.name / 'fid').mkdir(parents=True, exist_ok=True)
         (self.models_dir / self.name).mkdir(parents=True, exist_ok=True)
 
     def clear(self):

@@ -34,6 +34,8 @@ def train_from_folder(
     no_const = False,
     aug_prob = 0.,
     dataset_aug_prob = 0.,
+    calculate_fid = False,
+    num_fid_batches = 16666,
 ):
     model = Trainer(
         name,        
@@ -77,6 +79,10 @@ def train_from_folder(
         samples_name = f'generated-{timestamp}'
         model.generate_interpolation(samples_name, num_image_tiles, save_frames = save_frames)
         print(f'interpolation generated at {results_dir}/{name}/{samples_name}')
+        return
+
+    if calculate_fid:
+        model.calculate_fid(num_fid_batches)
         return
 
     model.set_data_src(data)
