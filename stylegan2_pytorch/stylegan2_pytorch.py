@@ -881,6 +881,22 @@ class Trainer():
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
+        real_path = str(self.results_dir / self.name / 'fid_real') + '/'
+        fake_path = str(self.results_dir / self.name / 'fid_fake') + '/'
+
+        # remove any existing files used for fid calculation and recreate directories
+        rmtree(real_path, ignore_errors=True)
+        rmtree(fake_path, ignore_errors=True)
+        os.makedirs(real_path)
+        os.makedirs(fake_path)
+
+        # copy the correct number of real images into results / name / fid_real
+        real_images = torch.cat([x for _, x in zip(range(num_batches), iter(self.loader))])
+
+        for j in range(real_images.size(0)):
+            torchvision.utils.save_image(real_images[j, :, :, :], real_path + '{}.png'.format(j))
+
+        # generate a bunch of fake images in results / name / fid_fake
         self.GAN.eval()
         ext = 'jpg' if not self.transparent else 'png'
 
@@ -897,7 +913,7 @@ class Trainer():
             generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
 
             for j in range(generated_images.size(0)):
-                torchvision.utils.save_image(generated_images[j, :, :, :], str(self.results_dir / self.name / 'fid' / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
+                torchvision.utils.save_image(generated_images[j, :, :, :], str(Path(fake_path) / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
 
     @torch.no_grad()
     def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):

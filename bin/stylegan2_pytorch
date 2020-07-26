@@ -81,11 +81,11 @@ def train_from_folder(
         print(f'interpolation generated at {results_dir}/{name}/{samples_name}')
         return
 
+    model.set_data_src(data)
+
     if calculate_fid:
         model.calculate_fid(num_fid_batches)
         return
-
-    model.set_data_src(data)
 
     for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
         retry_call(model.train, tries=3, exceptions=NanException)
