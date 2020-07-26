@@ -982,7 +982,6 @@ class Trainer():
 
     def init_folders(self):
         (self.results_dir / self.name).mkdir(parents=True, exist_ok=True)
-        (self.results_dir / self.name / 'fid').mkdir(parents=True, exist_ok=True)
         (self.models_dir / self.name).mkdir(parents=True, exist_ok=True)
 
     def clear(self):
