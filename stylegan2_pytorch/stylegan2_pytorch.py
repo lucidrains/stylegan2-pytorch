@@ -977,6 +977,11 @@ class Trainer():
         self.steps = name * self.save_every
 
         load_data = torch.load(self.model_name(name))
+
+        # make backwards compatible
+        if 'GAN' not in load_data:
+            load_data = {'GAN': load_data}
+
         self.GAN.load_state_dict(load_data['GAN'])
 
         if self.GAN.fp16 and 'amp' in load_data:
