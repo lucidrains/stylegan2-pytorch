@@ -569,7 +569,8 @@ class StyleGAN2(nn.Module):
         self.reset_parameter_averaging()
 
         self.cuda()
-        
+
+        self.fp16 = fp16
         if fp16:
             (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O2')
 
@@ -953,7 +954,12 @@ class Trainer():
         self.init_folders()
 
     def save(self, num):
-        torch.save(self.GAN.state_dict(), self.model_name(num))
+        save_data = {'GAN': self.GAN.state_dict()}
+
+        if self.GAN.fp16:
+            save_data['amp'] = amp.state_dict()
+
+        torch.save(save_data, self.model_name(num))
         self.write_config()
 
     def load(self, num = -1):
@@ -967,5 +973,11 @@ class Trainer():
                 return
             name = saved_nums[-1]
             print(f'continuing from previous epoch - {name}')
+
         self.steps = name * self.save_every
-        self.GAN.load_state_dict(torch.load(self.model_name(name)))
+
+        load_data = torch.load(self.model_name(name))
+        self.GAN.load_state_dict(load_data['GAN'])
+
+        if self.GAN.fp16 and 'amp' in load_data:
+            amp.load_state_dict(load_data['amp'])
