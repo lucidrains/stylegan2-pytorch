@@ -534,7 +534,7 @@ class Discriminator(nn.Module):
         return x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False):
+    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -563,7 +563,7 @@ class StyleGAN2(nn.Module):
 
         generator_params = list(self.G.parameters()) + list(self.S.parameters())
         self.G_opt = AdamP(generator_params, lr = self.lr, betas=(0.5, 0.9))
-        self.D_opt = AdamP(self.D.parameters(), lr = self.lr, betas=(0.5, 0.9))
+        self.D_opt = AdamP(self.D.parameters(), lr = self.lr * ttur_mult, betas=(0.5, 0.9))
 
         self._init_weights()
         self.reset_parameter_averaging()
@@ -602,7 +602,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -623,6 +623,7 @@ class Trainer():
         self.aug_prob = aug_prob
 
         self.lr = lr
+        self.ttur_mult = ttur_mult
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.mixed_prob = mixed_prob
@@ -656,7 +657,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr=self.lr, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, *args, **kwargs)
+        self.GAN = StyleGAN2(lr = self.lr, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, *args, **kwargs)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
