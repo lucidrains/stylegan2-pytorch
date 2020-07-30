@@ -15,6 +15,7 @@ import torch
 from torch import nn
 from torch.utils import data
 import torch.nn.functional as F
+import torch.cuda.amp
 
 from adamp import AdamP
 from torch.autograd import grad as torch_grad
@@ -27,12 +28,6 @@ from linear_attention_transformer import ImageLinearAttention
 
 from PIL import Image
 from pathlib import Path
-
-try:
-    from apex import amp
-    APEX_AVAILABLE = True
-except:
-    APEX_AVAILABLE = False
 
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
@@ -125,10 +120,9 @@ def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
 
-def loss_backwards(fp16, loss, optimizer, **kwargs):
+def loss_backwards(fp16, scaler, loss, optimizer, **kwargs):
     if fp16:
-        with amp.scale_loss(loss, optimizer) as scaled_loss:
-            scaled_loss.backward(**kwargs)
+        scaler.scale(loss).backward(**kwargs)
     else:
         loss.backward(**kwargs)
 
@@ -571,8 +565,6 @@ class StyleGAN2(nn.Module):
         self.cuda()
 
         self.fp16 = fp16
-        if fp16:
-            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1')
 
     def _init_weights(self):
         for m in self.modules():
@@ -638,7 +630,6 @@ class Trainer():
 
         self.gradient_accumulate_every = gradient_accumulate_every
 
-        assert not fp16 or fp16 and APEX_AVAILABLE, 'Apex is not available for you to use mixed precision training'
         self.fp16 = fp16
 
         self.cl_reg = cl_reg
@@ -654,6 +645,9 @@ class Trainer():
 
         self.loader = None
         self.dataset_aug_prob = dataset_aug_prob
+
+        if fp16:
+            self.scaler = torch.cuda.amp.GradScaler()
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
@@ -703,7 +697,7 @@ class Trainer():
         apply_path_penalty = self.steps > 5000 and self.steps % 32 == 0
         apply_cl_reg_to_generated = self.steps > 20000
 
-        backwards = partial(loss_backwards, self.fp16)
+        backwards = partial(loss_backwards, self.fp16, self.scaler)
 
         if self.GAN.D_cl is not None:
             self.GAN.D_opt.zero_grad()
@@ -736,74 +730,80 @@ class Trainer():
         self.GAN.D_opt.zero_grad()
 
         for i in range(self.gradient_accumulate_every):
-            get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
-            style = get_latents_fn(batch_size, num_layers, latent_dim)
-            noise = image_noise(batch_size, image_size)
+            with torch.cuda.amp.autocast():
+                get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
+                style = get_latents_fn(batch_size, num_layers, latent_dim)
+                noise = image_noise(batch_size, image_size)
 
-            w_space = latent_to_w(self.GAN.S, style)
-            w_styles = styles_def_to_tensor(w_space)
+                w_space = latent_to_w(self.GAN.S, style)
+                w_styles = styles_def_to_tensor(w_space)
 
-            generated_images = self.GAN.G(w_styles, noise)
-            fake_output, fake_q_loss = self.GAN.D_aug(generated_images.clone().detach(), detach = True, prob = aug_prob)
+                generated_images = self.GAN.G(w_styles, noise)
+                fake_output, fake_q_loss = self.GAN.D_aug(generated_images.clone().detach(), detach = True, prob = aug_prob)
 
-            image_batch = next(self.loader).cuda()
-            image_batch.requires_grad_()
-            real_output, real_q_loss = self.GAN.D_aug(image_batch, prob = aug_prob)
+                image_batch = next(self.loader).cuda()
+                image_batch.requires_grad_()
+                real_output, real_q_loss = self.GAN.D_aug(image_batch, prob = aug_prob)
 
-            divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
-            disc_loss = divergence
+                divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
+                disc_loss = divergence
 
-            quantize_loss = (fake_q_loss + real_q_loss).mean()
-            self.q_loss = float(quantize_loss.detach().item())
+                quantize_loss = (fake_q_loss + real_q_loss).mean()
+                self.q_loss = float(quantize_loss.detach().item())
 
-            disc_loss = disc_loss + quantize_loss
+                disc_loss = disc_loss + quantize_loss
 
-            if apply_gradient_penalty:
-                gp = gradient_penalty(image_batch, real_output)
-                self.last_gp_loss = gp.clone().detach().item()
-                disc_loss = disc_loss + gp
+                if apply_gradient_penalty:
+                    gp = gradient_penalty(image_batch, real_output)
+                    self.last_gp_loss = gp.clone().detach().item()
+                    disc_loss = disc_loss + gp
 
-            disc_loss = disc_loss / self.gradient_accumulate_every
-            disc_loss.register_hook(raise_if_nan)
+                disc_loss = disc_loss / self.gradient_accumulate_every
+                disc_loss.register_hook(raise_if_nan)
+
             backwards(disc_loss, self.GAN.D_opt)
 
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
         self.d_loss = float(total_disc_loss)
-        self.GAN.D_opt.step()
+        self.scaler.step(self.GAN.D_opt)
 
         # train generator
 
         self.GAN.G_opt.zero_grad()
         for i in range(self.gradient_accumulate_every):
-            style = get_latents_fn(batch_size, num_layers, latent_dim)
-            noise = image_noise(batch_size, image_size)
+            with torch.cuda.amp.autocast():
+                style = get_latents_fn(batch_size, num_layers, latent_dim)
+                noise = image_noise(batch_size, image_size)
 
-            w_space = latent_to_w(self.GAN.S, style)
-            w_styles = styles_def_to_tensor(w_space)
+                w_space = latent_to_w(self.GAN.S, style)
+                w_styles = styles_def_to_tensor(w_space)
 
-            generated_images = self.GAN.G(w_styles, noise)
-            fake_output, _ = self.GAN.D_aug(generated_images, prob = aug_prob)
-            loss = fake_output.mean()
-            gen_loss = loss
+                generated_images = self.GAN.G(w_styles, noise)
+                fake_output, _ = self.GAN.D_aug(generated_images, prob = aug_prob)
+                loss = fake_output.mean()
+                gen_loss = loss
 
-            if apply_path_penalty:
-                pl_lengths = calc_pl_lengths(w_styles, generated_images)
-                avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
+                if apply_path_penalty:
+                    pl_lengths = calc_pl_lengths(w_styles, generated_images)
+                    avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
 
-                if not is_empty(self.pl_mean):
-                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-                    if not torch.isnan(pl_loss):
-                        gen_loss = gen_loss + pl_loss
+                    if not is_empty(self.pl_mean):
+                        pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+                        if not torch.isnan(pl_loss):
+                            gen_loss = gen_loss + pl_loss
 
-            gen_loss = gen_loss / self.gradient_accumulate_every
-            gen_loss.register_hook(raise_if_nan)
+                gen_loss = gen_loss / self.gradient_accumulate_every
+                gen_loss.register_hook(raise_if_nan)
+
             backwards(gen_loss, self.GAN.G_opt)
 
             total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
 
         self.g_loss = float(total_gen_loss)
-        self.GAN.G_opt.step()
+        self.scaler.step(self.GAN.G_opt)
+
+        self.scaler.update()
 
         # calculate moving averages
 
@@ -957,9 +957,6 @@ class Trainer():
     def save(self, num):
         save_data = {'GAN': self.GAN.state_dict()}
 
-        if self.GAN.fp16:
-            save_data['amp'] = amp.state_dict()
-
         torch.save(save_data, self.model_name(num))
         self.write_config()
 
@@ -984,6 +981,3 @@ class Trainer():
             load_data = {'GAN': load_data}
 
         self.GAN.load_state_dict(load_data['GAN'])
-
-        if self.GAN.fp16 and 'amp' in load_data:
-            amp.load_state_dict(load_data['amp'])
