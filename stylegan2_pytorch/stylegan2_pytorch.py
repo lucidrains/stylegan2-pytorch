@@ -125,9 +125,9 @@ def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
 
-def loss_backwards(fp16, loss, optimizer, **kwargs):
+def loss_backwards(fp16, loss, optimizer, loss_id, **kwargs):
     if fp16:
-        with amp.scale_loss(loss, optimizer) as scaled_loss:
+        with amp.scale_loss(loss, optimizer, loss_id) as scaled_loss:
             scaled_loss.backward(**kwargs)
     else:
         loss.backward(**kwargs)
@@ -572,7 +572,7 @@ class StyleGAN2(nn.Module):
 
         self.fp16 = fp16
         if fp16:
-            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1')
+            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():
@@ -726,7 +726,7 @@ class Trainer():
 
             loss = self.GAN.D_cl.calculate_loss()
             self.last_cr_loss = loss.clone().detach().item()
-            backwards(loss, self.GAN.D_opt)
+            backwards(loss, self.GAN.D_opt, 0)
 
             self.GAN.D_opt.step()
 
@@ -765,7 +765,7 @@ class Trainer():
 
             disc_loss = disc_loss / self.gradient_accumulate_every
             disc_loss.register_hook(raise_if_nan)
-            backwards(disc_loss, self.GAN.D_opt)
+            backwards(disc_loss, self.GAN.D_opt, 1)
 
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
@@ -798,7 +798,7 @@ class Trainer():
 
             gen_loss = gen_loss / self.gradient_accumulate_every
             gen_loss.register_hook(raise_if_nan)
-            backwards(gen_loss, self.GAN.G_opt)
+            backwards(gen_loss, self.GAN.G_opt, 2)
 
             total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
 
