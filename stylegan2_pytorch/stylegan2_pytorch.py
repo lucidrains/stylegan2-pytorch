@@ -835,7 +835,7 @@ class Trainer():
         if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
             self.evaluate(floor(self.steps / 1000))
 
-        if self.steps % 10000 == 0:
+        if self.steps % 10000 == 0 and self.steps != 0:
             print("Calculating FID")
             fid = self.calculate_fid(400)
             with open('fid_scores.txt', 'a') as f:
