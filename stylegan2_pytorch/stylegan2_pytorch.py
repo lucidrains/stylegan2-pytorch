@@ -28,6 +28,8 @@ from linear_attention_transformer import ImageLinearAttention
 from PIL import Image
 from pathlib import Path
 
+from .pytorch_fid import fid_score
+
 try:
     from apex import amp
     APEX_AVAILABLE = True
@@ -833,6 +835,12 @@ class Trainer():
         if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
             self.evaluate(floor(self.steps / 1000))
 
+        if self.steps % 10000 == 0:
+            print("Calculating FID")
+            fid = self.calculate_fid(400)
+            with open('fid_scores.txt', 'a') as f:
+                f.write(f'{self.steps},{fid}\n')
+
         self.steps += 1
         self.av = None
 
@@ -915,6 +923,8 @@ class Trainer():
 
             for j in range(generated_images.size(0)):
                 torchvision.utils.save_image(generated_images[j, :, :, :], str(Path(fake_path) / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
+
+        return fid_score.calculate_fid_given_paths([real_path, fake_path], 256, True, 2048)
 
     @torch.no_grad()
     def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):

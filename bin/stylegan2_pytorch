@@ -86,7 +86,8 @@ def train_from_folder(
     model.set_data_src(data)
 
     if calculate_fid:
-        model.calculate_fid(num_fid_batches)
+        fid = model.calculate_fid(num_fid_batches)
+        print("FID: " + str(fid))
         return
 
     for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
