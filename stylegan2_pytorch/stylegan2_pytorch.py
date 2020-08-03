@@ -891,6 +891,8 @@ class Trainer():
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
+        torch.cuda.empty_cache()
+
         real_path = str(self.results_dir / self.name / 'fid_real') + '/'
         fake_path = str(self.results_dir / self.name / 'fid_fake') + '/'
 
