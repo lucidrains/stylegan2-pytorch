@@ -310,3 +310,14 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
     primaryClass = {cs.CV}
 }
 ```
+
+```bibtex
+@misc{zhong2020improving,
+    title   = {Improving the Speed and Quality of GAN by Adversarial Training},
+    author  = {Jiachen Zhong and Xuanqing Liu and Cho-Jui Hsieh},
+    year    = {2020},
+    eprint  = {2008.03364},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.LG}
+}
+```
