@@ -626,7 +626,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., perturbation_eps = 0., *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -681,13 +681,15 @@ class Trainer():
 
         # 'free' adversarial training variables
 
-        self.perturbation_eps = .01
-        self.perturbation = torch.zeros(
-            batch_size * gradient_accumulate_every,
-            4 if transparent else 3,
-            image_size,
-            image_size
-        ).cuda()
+        self.perturbation_eps = perturbation_eps
+
+        if perturbation_eps > 0:
+            self.perturbation = torch.zeros(
+                batch_size * gradient_accumulate_every,
+                4 if transparent else 3,
+                image_size,
+                image_size
+            ).cuda()
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
@@ -736,6 +738,7 @@ class Trainer():
         apply_gradient_penalty = self.steps % 4 == 0
         apply_path_penalty = self.steps > 5000 and self.steps % 32 == 0
         apply_cl_reg_to_generated = self.steps > 20000
+        apply_adv_perturbation = self.perturbation_eps > 0
 
         backwards = partial(loss_backwards, self.fp16)
 
@@ -767,8 +770,10 @@ class Trainer():
         # train discriminator
 
         avg_pl_length = self.pl_mean
-        perturbation = self.perturbation
-        perturbation_grads = None
+
+        if apply_adv_perturbation:
+            perturbation = self.perturbation
+            perturbation_grads = None
 
         self.GAN.D_opt.zero_grad()
 
@@ -785,11 +790,13 @@ class Trainer():
             image_batch = next(self.loader).cuda()
             image_batch.requires_grad_()
 
-            pertubation_slice = slice(i * batch_size, (i + 1) * batch_size)
-            perturbation_noise = nn.Parameter(perturbation[pertubation_slice], requires_grad=True)
+            if apply_adv_perturbation:
+                pertubation_slice = slice(i * batch_size, (i + 1) * batch_size)
+                perturbation_noise = nn.Parameter(perturbation[pertubation_slice], requires_grad=True)
+                image_batch = image_batch + perturbation_noise
 
             fake_output, fake_q_loss = self.GAN.D_aug(generated_images, detach = True, prob = aug_prob)
-            real_output, real_q_loss = self.GAN.D_aug(image_batch + perturbation_noise, prob = aug_prob)
+            real_output, real_q_loss = self.GAN.D_aug(image_batch, prob = aug_prob)
 
             divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
             disc_loss = divergence
@@ -808,15 +815,17 @@ class Trainer():
             disc_loss.register_hook(raise_if_nan)
             backwards(disc_loss, self.GAN.D_opt, 1)
 
-            perturbation_grads = safe_cat(perturbation_grads, perturbation_noise.grad)
+            if apply_adv_perturbation:
+                perturbation_grads = safe_cat(perturbation_grads, perturbation_noise.grad)
 
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
         # update adversarial perturbation
 
-        eps = self.perturbation_eps
-        self.perturbation += eps * torch.sign(perturbation_grads)
-        self.perturbation.clamp_(-eps, eps)
+        if apply_adv_perturbation:
+            eps = self.perturbation_eps
+            self.perturbation += eps * torch.sign(perturbation_grads)
+            self.perturbation.clamp_(-eps, eps)
 
         # update discriminator
 
