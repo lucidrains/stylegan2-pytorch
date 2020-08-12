@@ -121,6 +121,11 @@ def is_empty(t):
         return t.nelement() == 0
     return t is None
 
+def safe_cat(acc, t, dim=0):
+    if acc is None:
+        return t
+    return torch.cat((acc, t), dim=dim)
+
 def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
@@ -674,6 +679,16 @@ class Trainer():
         self.loader = None
         self.dataset_aug_prob = dataset_aug_prob
 
+        # 'free' adversarial training variables
+
+        self.perturbation_eps = .01
+        self.perturbation = torch.zeros(
+            batch_size * gradient_accumulate_every,
+            4 if transparent else 3,
+            image_size,
+            image_size
+        ).cuda()
+
     def init_GAN(self):
         args, kwargs = self.GAN_params
         self.GAN = StyleGAN2(lr = self.lr, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, *args, **kwargs)
@@ -752,6 +767,9 @@ class Trainer():
         # train discriminator
 
         avg_pl_length = self.pl_mean
+        perturbation = self.perturbation
+        perturbation_grads = None
+
         self.GAN.D_opt.zero_grad()
 
         for i in range(self.gradient_accumulate_every):
@@ -762,12 +780,16 @@ class Trainer():
             w_space = latent_to_w(self.GAN.S, style)
             w_styles = styles_def_to_tensor(w_space)
 
-            generated_images = self.GAN.G(w_styles, noise)
-            fake_output, fake_q_loss = self.GAN.D_aug(generated_images.clone().detach(), detach = True, prob = aug_prob)
+            generated_images = self.GAN.G(w_styles, noise).clone().detach()
 
             image_batch = next(self.loader).cuda()
             image_batch.requires_grad_()
-            real_output, real_q_loss = self.GAN.D_aug(image_batch, prob = aug_prob)
+
+            pertubation_slice = slice(i * batch_size, (i + 1) * batch_size)
+            perturbation_noise = nn.Parameter(perturbation[pertubation_slice], requires_grad=True)
+
+            fake_output, fake_q_loss = self.GAN.D_aug(generated_images, detach = True, prob = aug_prob)
+            real_output, real_q_loss = self.GAN.D_aug(image_batch + perturbation_noise, prob = aug_prob)
 
             divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
             disc_loss = divergence
@@ -786,7 +808,17 @@ class Trainer():
             disc_loss.register_hook(raise_if_nan)
             backwards(disc_loss, self.GAN.D_opt, 1)
 
+            perturbation_grads = safe_cat(perturbation_grads, perturbation_noise.grad)
+
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
+
+        # update adversarial perturbation
+
+        eps = self.perturbation_eps
+        self.perturbation += eps * torch.sign(perturbation_grads)
+        self.perturbation.clamp_(-eps, eps)
+
+        # update discriminator
 
         self.d_loss = float(total_disc_loss)
         self.GAN.D_opt.step()
