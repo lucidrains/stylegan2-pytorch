@@ -28,7 +28,7 @@ from linear_attention_transformer import ImageLinearAttention
 from PIL import Image
 from pathlib import Path
 
-from .pytorch_fid import fid_score
+from .pytorch_fid.pytorch_fid import fid_score
 
 try:
     from apex import amp
