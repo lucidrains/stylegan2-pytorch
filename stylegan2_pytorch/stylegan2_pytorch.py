@@ -837,7 +837,7 @@ class Trainer():
         if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
             self.evaluate(floor(self.steps / 1000))
 
-        if self.calculate_fid_every is not None and self.steps % self.calculate_fid_every == 0:  # and self.steps != 0:
+        if self.calculate_fid_every is not None and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
             print("Calculating FID")
             # use a minimum of 12,800 images for good results
             num_batches = math.ceil(12800 / self.batch_size)
