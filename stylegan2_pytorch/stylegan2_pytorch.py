@@ -28,7 +28,7 @@ from linear_attention_transformer import ImageLinearAttention
 from PIL import Image
 from pathlib import Path
 
-from .pytorch_fid.pytorch_fid import fid_score
+from pytorch_fid import fid_score
 
 try:
     from apex import amp
@@ -604,7 +604,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., calculate_fid_every = None, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -656,6 +656,8 @@ class Trainer():
 
         self.loader = None
         self.dataset_aug_prob = dataset_aug_prob
+
+        self.calculate_fid_every = calculate_fid_every
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
@@ -835,10 +837,12 @@ class Trainer():
         if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
             self.evaluate(floor(self.steps / 1000))
 
-        if self.steps % 10000 == 0 and self.steps != 0:
+        if self.calculate_fid_every is not None and self.steps % self.calculate_fid_every == 0:  # and self.steps != 0:
             print("Calculating FID")
-            fid = self.calculate_fid(400)
-            with open('fid_scores.txt', 'a') as f:
+            # use a minimum of 12,800 images for good results
+            num_batches = math.ceil(12800 / self.batch_size)
+            fid = self.calculate_fid(num_batches)
+            with open(str(self.results_dir / self.name / f'fid_scores.txt'), 'a') as f:
                 f.write(f'{self.steps},{fid}\n')
 
         self.steps += 1

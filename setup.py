@@ -23,7 +23,8 @@ setup(
       'adamp',
       'contrastive_learner>=0.1.0',
       'linear_attention_transformer',
-      'vector-quantize-pytorch'
+      'vector-quantize-pytorch',
+      'pytorch-fid'
   ],
   classifiers=[
       'Development Status :: 4 - Beta',

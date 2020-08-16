@@ -35,8 +35,7 @@ def train_from_folder(
     no_const = False,
     aug_prob = 0.,
     dataset_aug_prob = 0.,
-    calculate_fid = False,
-    num_fid_batches = 16666,
+    calculate_fid_every = None
 ):
     model = Trainer(
         name,        
@@ -59,7 +58,8 @@ def train_from_folder(
         attn_layers = attn_layers,
         no_const = no_const,
         aug_prob = aug_prob,
-        dataset_aug_prob = dataset_aug_prob
+        dataset_aug_prob = dataset_aug_prob,
+        calculate_fid_every = calculate_fid_every
     )
 
     if not new:
@@ -84,11 +84,6 @@ def train_from_folder(
         return
 
     model.set_data_src(data)
-
-    if calculate_fid:
-        fid = model.calculate_fid(num_fid_batches)
-        print("FID: " + str(fid))
-        return
 
     for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
         retry_call(model.train, tries=3, exceptions=NanException)
