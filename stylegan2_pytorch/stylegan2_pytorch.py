@@ -310,6 +310,7 @@ class StyleVectorizer(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
+        x = F.normalize(x, dim=1)
         return self.net(x)
 
 class RGBBlock(nn.Module):
