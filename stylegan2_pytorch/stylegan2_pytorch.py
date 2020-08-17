@@ -299,13 +299,26 @@ class AugWrapper(nn.Module):
 
 # stylegan2 classes
 
+class EqualLinear(nn.Module):
+    def __init__(self, in_dim, out_dim, lr_mul = 1, bias = True):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(out_dim, in_dim).div_(lr_mul))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+
+        self.scale = (1 / math.sqrt(in_dim)) * lr_mul
+        self.lr_mul = lr_mul
+
+    def forward(self, input):
+        return F.linear(input, self.weight * self.scale, bias=self.bias * self.lr_mul)
+
 class StyleVectorizer(nn.Module):
-    def __init__(self, emb, depth):
+    def __init__(self, emb, depth, lr_mul = 0.1):
         super().__init__()
 
         layers = []
         for i in range(depth):
-            layers.extend([nn.Linear(emb, emb), leaky_relu()])
+            layers.extend([EqualLinear(emb, emb, lr_mul), leaky_relu()])
 
         self.net = nn.Sequential(*layers)
 
@@ -554,17 +567,17 @@ class Discriminator(nn.Module):
         return x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False):
+    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1):
         super().__init__()
         self.lr = lr
         self.steps = steps
         self.ema_updater = EMA(0.995)
 
-        self.S = StyleVectorizer(latent_dim, style_depth)
+        self.S = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
         self.G = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, no_const = no_const, fmap_max = fmap_max)
         self.D = Discriminator(image_size, network_capacity, fq_layers = fq_layers, fq_dict_size = fq_dict_size, attn_layers = attn_layers, transparent = transparent, fmap_max = fmap_max)
 
-        self.SE = StyleVectorizer(latent_dim, style_depth)
+        self.SE = StyleVectorizer(latent_dim, style_depth, lr_mul = lr_mlp)
         self.GE = Generator(image_size, latent_dim, network_capacity, transparent = transparent, attn_layers = attn_layers, no_const = no_const)
 
         self.D_cl = None
@@ -622,7 +635,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -643,6 +656,7 @@ class Trainer():
         self.aug_prob = aug_prob
 
         self.lr = lr
+        self.lr_mlp = lr_mlp
         self.ttur_mult = ttur_mult
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -677,7 +691,7 @@ class Trainer():
 
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr = self.lr, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, *args, **kwargs)
+        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, *args, **kwargs)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -691,12 +705,11 @@ class Trainer():
         self.fq_dict_size = config['fq_dict_size']
         self.attn_layers = config.pop('attn_layers', [])
         self.no_const = config.pop('no_const', False)
-        self.ttur_mult = config.pop('ttur_mult', 2)
         del self.GAN
         self.init_GAN()
 
     def config(self):
-        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const, 'ttur_mult': self.ttur_mult}
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
     def set_data_src(self, folder):
         self.dataset = Dataset(folder, self.image_size, transparent = self.transparent, aug_prob = self.dataset_aug_prob)
