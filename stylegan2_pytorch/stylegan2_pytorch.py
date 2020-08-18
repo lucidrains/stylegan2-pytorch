@@ -171,6 +171,9 @@ def image_noise(n, im_size):
 def leaky_relu(p=0.2):
     return nn.LeakyReLU(p, inplace=True)
 
+def pixel_norm(x, eps=1e-8):
+    return x * torch.rsqrt((x ** 2).mean(dim=1, keepdims=True) + eps)
+
 def evaluate_in_chunks(max_batch_size, model, *args):
     split_args = list(zip(*list(map(lambda x: x.split(max_batch_size, dim=0), args))))
     chunked_outputs = [model(*i) for i in split_args]
@@ -322,7 +325,7 @@ class StyleVectorizer(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
-        x = F.normalize(x, dim=1)
+        x = pixel_norm(x)
         return self.net(x)
 
 class RGBBlock(nn.Module):
