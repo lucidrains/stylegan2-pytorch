@@ -542,8 +542,10 @@ class Discriminator(nn.Module):
         self.attn_blocks = nn.ModuleList(attn_blocks)
         self.quantize_blocks = nn.ModuleList(quantize_blocks)
 
-        latent_dim = 2 * 2 * filters[-1]
+        chan_last = filters[-1]
+        latent_dim = 2 * 2 * chan_last
 
+        self.final_conv = nn.Conv2d(chan_last, chan_last, 3, padding=1)
         self.flatten = Flatten()
         self.to_logit = nn.Linear(latent_dim, 1)
 
@@ -562,6 +564,7 @@ class Discriminator(nn.Module):
                 x, loss = q_block(x)
                 quantize_loss += loss
 
+        x = self.final_conv(x)
         x = self.flatten(x)
         x = self.to_logit(x)
         return x.squeeze(), quantize_loss
