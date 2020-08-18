@@ -302,15 +302,14 @@ class AugWrapper(nn.Module):
 class EqualLinear(nn.Module):
     def __init__(self, in_dim, out_dim, lr_mul = 1, bias = True):
         super().__init__()
-        self.weight = nn.Parameter(torch.randn(out_dim, in_dim).div_(lr_mul))
+        self.weight = nn.Parameter(torch.randn(out_dim, in_dim))
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_dim))
 
-        self.scale = (1 / math.sqrt(in_dim)) * lr_mul
         self.lr_mul = lr_mul
 
     def forward(self, input):
-        return F.linear(input, self.weight * self.scale, bias=self.bias * self.lr_mul)
+        return F.linear(input, self.weight * self.lr_mul, bias=self.bias * self.lr_mul)
 
 class StyleVectorizer(nn.Module):
     def __init__(self, emb, depth, lr_mul = 0.1):
