@@ -464,6 +464,7 @@ class Generator(nn.Module):
         else:
             self.initial_block = nn.Parameter(torch.randn((1, init_channels, 4, 4)))
 
+        self.initial_conv = nn.Conv2d(filters[0], filters[0], 3, padding=1)
         self.blocks = nn.ModuleList([])
         self.attns = nn.ModuleList([])
 
@@ -496,9 +497,10 @@ class Generator(nn.Module):
         else:
             x = self.initial_block.expand(batch_size, -1, -1, -1)
 
-        styles = styles.transpose(0, 1)
-
         rgb = None
+        styles = styles.transpose(0, 1)
+        x = self.initial_conv(x)
+
         for style, block, attn in zip(styles, self.blocks, self.attns):
             if attn is not None:
                 x = attn(x)
@@ -513,15 +515,15 @@ class Discriminator(nn.Module):
         num_init_filters = 3 if not transparent else 4
 
         blocks = []
-        filters = [num_init_filters] + [(network_capacity) * (2 ** i) for i in range(num_layers + 1)]
+        filters = [num_init_filters] + [(64) * (2 ** i) for i in range(num_layers + 1)]
 
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
         chan_in_out = list(zip(filters[:-1], filters[1:]))
 
         blocks = []
-        quantize_blocks = []
         attn_blocks = []
+        quantize_blocks = []
 
         for ind, (in_chan, out_chan) in enumerate(chan_in_out):
             num_layer = ind + 1
