@@ -288,7 +288,7 @@ class AugWrapper(nn.Module):
 
     def forward(self, images, prob = 0., detach = False):
         if random() < prob:
-            random_scale = random_float(0.5, 0.9)
+            random_scale = random_float(0.75, 0.95)
             images = random_hflip(images, prob=0.5)
             images = random_crop_and_resize(images, scale = random_scale)
 
