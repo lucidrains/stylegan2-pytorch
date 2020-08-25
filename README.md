@@ -55,6 +55,12 @@ You can also specify the location where intermediate results and model checkpoin
 $ stylegan2_pytorch --data /path/to/images --name my-project-name --results_dir /path/to/results/dir --models_dir /path/to/models/dir
 ```
 
+You can increase the network capacity (which defaults to `16`) to improve generation results, at the cost of more memory.
+
+```bash
+$ stylegan2_pytorch --data /path/to/images --network-capacity 256
+```
+
 By default, if the training gets cut off, it will automatically resume from the last checkpointed file. If you want to restart with new settings, just add a `new` flag
 
 ```bash
