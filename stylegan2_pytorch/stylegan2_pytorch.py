@@ -965,6 +965,11 @@ class Trainer():
             generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
             images_grid = torchvision.utils.make_grid(generated_images, nrow = num_rows)
             pil_image = transforms.ToPILImage()(images_grid.cpu())
+            
+            if self.transparent:
+                background = Image.new("RGBA", pil_image.size, (255, 255, 255))
+                pil_image = Image.alpha_composite(background, pil_image)
+                
             frames.append(pil_image)
 
         frames[0].save(str(self.results_dir / self.name / f'{str(num)}.gif'), save_all=True, append_images=frames[1:], duration=80, loop=0, optimize=True)
