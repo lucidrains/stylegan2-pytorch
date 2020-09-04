@@ -639,7 +639,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -662,6 +662,7 @@ class Trainer():
         self.lr = lr
         self.lr_mlp = lr_mlp
         self.ttur_mult = ttur_mult
+        self.rel_disc_loss = rel_disc_loss
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.mixed_prob = mixed_prob
@@ -788,7 +789,14 @@ class Trainer():
             image_batch.requires_grad_()
             real_output, real_q_loss = self.GAN.D_aug(image_batch, prob = aug_prob)
 
-            divergence = (F.relu(1 + real_output) + F.relu(1 - fake_output)).mean()
+            real_output_loss = real_output
+            fake_output_loss = fake_output
+
+            if self.rel_disc_loss:
+                real_output_loss = real_output_loss - fake_output.mean()
+                fake_output_loss = fake_output_loss - real_output.mean()
+
+            divergence = (F.relu(1 + real_output_loss) + F.relu(1 - fake_output_loss)).mean()
             disc_loss = divergence
 
             quantize_loss = (fake_q_loss + real_q_loss).mean()

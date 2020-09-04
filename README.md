@@ -215,6 +215,14 @@ I have tried contrastive learning on the discriminator (in step with the usual G
 $ stylegan2_pytorch --data ./data --cl-reg
 ```
 
+### Relativistic Discriminator Loss
+
+This was proposed in the Relativistic GAN paper to stabilize training. I have had mixed results, but will include the feature for those who want to experiment with it.
+
+```python
+$ stylegan2_pytorch --data ./data --rel-disc-loss
+```
+
 ### Non-constant 4x4 Block
 
 By default, the StyleGAN architecture styles a constant learned 4x4 block as it is progressively upsampled. This is an experimental feature that makes it so the 4x4 block is learned from the style vector `w` instead.
@@ -314,5 +322,16 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
     eprint  = {2006.06676},
     archivePrefix = {arXiv},
     primaryClass = {cs.CV}
+}
+```
+
+```bibtex
+@misc{jolicoeurmartineau2018relativistic,
+    title   = {The relativistic discriminator: a key element missing from standard GAN},
+    author  = {Alexia Jolicoeur-Martineau},
+    year    = {2018},
+    eprint  = {1807.00734},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.LG}
 }
 ```
