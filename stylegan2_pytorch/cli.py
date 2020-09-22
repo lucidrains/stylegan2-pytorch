@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import os
 import fire
 from retry.api import retry_call
