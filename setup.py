@@ -3,8 +3,12 @@ from setuptools import setup, find_packages
 setup(
   name = 'stylegan2_pytorch',
   packages = find_packages(),
-  scripts=['bin/stylegan2_pytorch'],
-  version = '0.21.1',
+  entry_points={
+      'console_scripts': [
+          'stylegan2_pytorch = stylegan2_pytorch.cli:main',
+      ],
+  },
+  version = '0.21.2',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',

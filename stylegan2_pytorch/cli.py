@@ -102,5 +102,5 @@ def train_from_folder(
         if _ % 50 == 0:
             model.print_log()
 
-if __name__ == "__main__":
+def main():
     fire.Fire(train_from_folder)
