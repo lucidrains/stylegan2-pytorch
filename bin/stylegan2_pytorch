@@ -1,9 +1,17 @@
 #!/usr/bin/env python
+import os
 import fire
 from retry.api import retry_call
 from tqdm import tqdm
-from stylegan2_pytorch import Trainer, NanException
 from datetime import datetime
+
+def cast_list(el):
+    return el if isinstance(el, list) else [el]
+
+def timestamped_filename(prefix = 'generated-'):
+    now = datetime.now()
+    timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
+    return f'{prefix}{timestamp}'
 
 def train_from_folder(
     data = './data',
@@ -37,7 +45,13 @@ def train_from_folder(
     no_const = False,
     aug_prob = 0.,
     dataset_aug_prob = 0.,
+    gpu_ids = [0]
 ):
+    gpu_ids = cast_list(gpu_ids)
+    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, gpu_ids))
+
+    from stylegan2_pytorch import Trainer, NanException
+
     model = Trainer(
         name,        
         results_dir,
@@ -70,17 +84,13 @@ def train_from_folder(
         model.clear()
 
     if generate:
-        now = datetime.now()
-        timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
-        samples_name = f'generated-{timestamp}'
+        samples_name = timestamped_filename()
         model.evaluate(samples_name, num_image_tiles)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
         return
 
     if generate_interpolation:
-        now = datetime.now()
-        timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
-        samples_name = f'generated-{timestamp}'
+        samples_name = timestamped_filename()
         model.generate_interpolation(samples_name, num_image_tiles, save_frames = save_frames)
         print(f'interpolation generated at {results_dir}/{name}/{samples_name}')
         return
