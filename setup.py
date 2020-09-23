@@ -8,7 +8,7 @@ setup(
           'stylegan2_pytorch = stylegan2_pytorch.cli:main',
       ],
   },
-  version = '0.21.2',
+  version = '0.22.0',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
@@ -24,7 +24,6 @@ setup(
       'torch',
       'torchvision',
       'pillow',
-      'adamp',
       'contrastive_learner>=0.1.0',
       'linear_attention_transformer',
       'vector-quantize-pytorch'

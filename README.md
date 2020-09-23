@@ -91,6 +91,16 @@ If a previous checkpoint contained a better generator, (which often happens as g
 $ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
+## Multi-GPU training
+
+If you have one machine with multiple GPUs, the repository offers a way to utilize all of them for training. With multiple GPUs, each batch will be divided evenly amongst the GPUs available. For example, for 2 GPUs, with a batch size of 32, each GPU will see 16 samples.
+
+You simply have to add a `--multi-gpus` flag, everyting else is taken care of. If you would like to restrict to specific GPUs, you can use the `CUDA_VISIBLE_DEVICES` environment variable to control what devices can be used. (ex. `CUDA_VISIBLE_DEVICES=0,2,3` only devices 0, 2, 3 are available)
+
+```bash
+$ stylegan2_pytorch --data /path/to/data --multi-gpus --batch-size 32 --gradient-accumulate-every 1
+```
+
 ## Low amounts of Training Data
 
 In the past, GANs needed a lot of data to learn how to generate well. The faces model took **70k** high quality images from Flickr, as an example.

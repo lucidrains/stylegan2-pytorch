@@ -1,8 +1,17 @@
 import os
 import fire
+import random
 from retry.api import retry_call
 from tqdm import tqdm
 from datetime import datetime
+from functools import wraps
+from stylegan2_pytorch import Trainer, NanException
+
+import torch
+import torch.multiprocessing as mp
+import torch.distributed as dist
+
+import numpy as np
 
 def cast_list(el):
     return el if isinstance(el, list) else [el]
@@ -11,6 +20,46 @@ def timestamped_filename(prefix = 'generated-'):
     now = datetime.now()
     timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
     return f'{prefix}{timestamp}'
+
+def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name):
+    is_main = rank == 0
+    is_ddp = world_size > 1
+
+    if is_ddp:
+        torch.manual_seed(0)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        np.random.seed(0)
+        random.seed(0)
+
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '12355'
+        dist.init_process_group('nccl', rank=rank, world_size=world_size)
+
+        print(f"{rank + 1}/{world_size} process initialized.")
+
+    model_args.update(
+        is_ddp = is_ddp,
+        rank = rank,
+        world_size = world_size
+    )
+
+    model = Trainer(**model_args)
+
+    if not new:
+        model.load(load_from)
+    else:
+        model.clear()
+
+    model.set_data_src(data)
+
+    for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
+        retry_call(model.train, tries=3, exceptions=NanException)
+        if is_main and _ % 50 == 0:
+            model.print_log()
+
+    if is_ddp:
+        dist.destroy_process_group()
 
 def train_from_folder(
     data = './data',
@@ -44,17 +93,12 @@ def train_from_folder(
     no_const = False,
     aug_prob = 0.,
     dataset_aug_prob = 0.,
-    gpu_ids = [0]
+    multi_gpus = False
 ):
-    gpu_ids = cast_list(gpu_ids)
-    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, gpu_ids))
-
-    from stylegan2_pytorch import Trainer, NanException
-
-    model = Trainer(
-        name,        
-        results_dir,
-        models_dir,
+    model_args = dict(
+        name = name,
+        results_dir = results_dir,
+        models_dir = models_dir,
         batch_size = batch_size,
         gradient_accumulate_every = gradient_accumulate_every,
         image_size = image_size,
@@ -77,29 +121,32 @@ def train_from_folder(
         dataset_aug_prob = dataset_aug_prob
     )
 
-    if not new:
-        model.load(load_from)
-    else:
-        model.clear()
-
     if generate:
+        model = Trainer(**model_args)
+        model.load(load_from)
         samples_name = timestamped_filename()
         model.evaluate(samples_name, num_image_tiles)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
         return
 
     if generate_interpolation:
+        model = Trainer(**model_args)
+        model.load(load_from)
         samples_name = timestamped_filename()
         model.generate_interpolation(samples_name, num_image_tiles, save_frames = save_frames)
         print(f'interpolation generated at {results_dir}/{name}/{samples_name}')
         return
 
-    model.set_data_src(data)
+    world_size = torch.cuda.device_count()
 
-    for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
-        retry_call(model.train, tries=3, exceptions=NanException)
-        if _ % 50 == 0:
-            model.print_log()
+    if world_size == 1 or not multi_gpus:
+        run_training(0, 1, model_args, data, load_from, new, num_train_steps, name)
+        return
+
+    mp.spawn(run_training,
+        args=(world_size, model_args, data, load_from, new, num_train_steps, name),
+        nprocs=world_size,
+        join=True)
 
 def main():
     fire.Fire(train_from_folder)
