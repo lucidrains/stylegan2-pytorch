@@ -3,12 +3,14 @@ import sys
 import math
 import fire
 import json
+
 from tqdm import tqdm
 from math import floor, log2
 from random import random
 from shutil import rmtree
 from functools import partial
 import multiprocessing
+from contextlib import contextmanager, ExitStack
 
 import numpy as np
 
@@ -107,6 +109,17 @@ attn_and_ff = lambda chan: nn.Sequential(*[
 
 # helpers
 
+@contextmanager
+def null_context():
+    yield
+
+def combine_contexts(contexts):
+    @contextmanager
+    def multi_contexts():
+        with ExitStack() as stack:
+            yield [stack.enter_context(ctx()) for ctx in contexts]
+    return multi_contexts
+
 def default(value, d):
     return d if value is None else value
 
@@ -126,6 +139,19 @@ def is_empty(t):
 def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
+
+def gradient_accumulate_contexts(gradient_accumulate_every, is_ddp, ddps):
+    if is_ddp:
+        num_no_syncs = gradient_accumulate_every - 1
+        head = [combine_contexts(map(lambda ddp: ddp.no_sync, ddps))] * num_no_syncs
+        tail = [null_context]
+        contexts =  head + tail
+    else:
+        contexts = [null_context] * gradient_accumulate_every
+
+    for context in contexts:
+        with context():
+            yield
 
 def loss_backwards(fp16, loss, optimizer, loss_id, **kwargs):
     if fp16:
@@ -244,6 +270,7 @@ class Dataset(data.Dataset):
         self.folder = folder
         self.image_size = image_size
         self.paths = [p for ext in EXTS for p in Path(f'{folder}').glob(f'**/*.{ext}')]
+        assert len(self.paths) > 0, f'No images were found in {folder} for training'
 
         convert_image_fn = convert_transparent_to_rgb if not transparent else convert_rgb_to_transparent
         num_channels = 3 if not transparent else 4
@@ -802,7 +829,7 @@ class Trainer():
         avg_pl_length = self.pl_mean
         self.GAN.D_opt.zero_grad()
 
-        for i in range(self.gradient_accumulate_every):
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[D_aug]):
             get_latents_fn = mixed_list if random() < self.mixed_prob else noise_list
             style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
             noise = image_noise(batch_size, image_size, device=self.rank)
@@ -849,7 +876,8 @@ class Trainer():
         # train generator
 
         self.GAN.G_opt.zero_grad()
-        for i in range(self.gradient_accumulate_every):
+
+        for i in gradient_accumulate_contexts(self.gradient_accumulate_every, self.is_ddp, ddps=[S, G, D_aug]):
             style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
             noise = image_noise(batch_size, image_size, device=self.rank)
 
