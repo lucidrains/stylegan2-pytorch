@@ -1,7 +1,7 @@
 ## Simple StyleGan2 for Pytorch
 [![PyPI version](https://badge.fury.io/py/stylegan2-pytorch.svg)](https://badge.fury.io/py/stylegan2-pytorch)
 
-Simple working Pytorch implementation of Stylegan2 based on https://arxiv.org/abs/1912.04958
+Simple Pytorch implementation of Stylegan2 based on https://arxiv.org/abs/1912.04958 that can be completely trained from the command-line, no coding needed.
 
 Below are some flowers that do not exist.
 
