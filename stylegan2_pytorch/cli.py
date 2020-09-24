@@ -21,17 +21,19 @@ def timestamped_filename(prefix = 'generated-'):
     timestamp = now.strftime("%m-%d-%Y_%H-%M-%S")
     return f'{prefix}{timestamp}'
 
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)
+
 def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name):
     is_main = rank == 0
     is_ddp = world_size > 1
 
     if is_ddp:
-        torch.manual_seed(0)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        np.random.seed(0)
-        random.seed(0)
-
+        set_seed(seed)
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '12355'
         dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -53,7 +55,7 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
 
     model.set_data_src(data)
 
-    for _ in tqdm(range(num_train_steps - model.steps), mininterval=10., desc=f'{name}<{data}>'):
+    for _ in tqdm(range(num_train_steps - model.steps), initial = model.steps, total = num_train_steps, mininterval=10., desc=f'{name}<{data}>'):
         retry_call(model.train, tries=3, exceptions=NanException)
         if is_main and _ % 50 == 0:
             model.print_log()
