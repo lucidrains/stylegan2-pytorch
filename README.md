@@ -76,7 +76,7 @@ $ stylegan2_pytorch  --generate
 To generate a video of a interpolation through two random points in latent space.
 
 ```bash
-$ stylegan2_pytorch --generate-interpolation
+$ stylegan2_pytorch --generate-interpolation --interpolation-num-steps 100
 ```
 
 To save each individual frame of the interpolation

@@ -998,7 +998,7 @@ class Trainer():
         return generated_images.clamp_(0., 1.)
 
     @torch.no_grad()
-    def generate_interpolation(self, num = 0, num_image_tiles = 8, trunc = 1.0, save_frames = False):
+    def generate_interpolation(self, num = 0, num_image_tiles = 8, trunc = 1.0, num_steps = 100, save_frames = False):
         self.GAN.eval()
         ext = 'jpg' if not self.transparent else 'png'
         num_rows = num_image_tiles
@@ -1009,11 +1009,11 @@ class Trainer():
 
         # latents and noise
 
-        latents_low = noise(num_rows ** 2, latent_dim)
-        latents_high = noise(num_rows ** 2, latent_dim)
+        latents_low = noise(num_rows ** 2, latent_dim, device=self.rank)
+        latents_high = noise(num_rows ** 2, latent_dim, device=self.rank)
         n = image_noise(num_rows ** 2, image_size, device=self.rank)
 
-        ratios = torch.linspace(0., 8., 100)
+        ratios = torch.linspace(0., 8., num_steps)
 
         frames = []
         for ratio in tqdm(ratios):
