@@ -25,6 +25,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 import torchvision
 from torchvision import transforms
+from stylegan2_pytorch.diff_augment import DiffAugment
 
 from vector_quantize_pytorch import VectorQuantize
 from linear_attention_transformer import ImageLinearAttention
@@ -166,7 +167,7 @@ def gradient_penalty(images, output, weight = 10):
                            grad_outputs=torch.ones(output.size(), device=images.device),
                            create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-    gradients = gradients.view(batch_size, -1)
+    gradients = gradients.reshape(batch_size, -1)
     return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
 def calc_pl_lengths(styles, images):
@@ -294,18 +295,6 @@ class Dataset(data.Dataset):
 
 # augmentations
 
-def random_float(lo, hi):
-    return lo + (hi - lo) * random()
-
-def random_crop_and_resize(tensor, scale):
-    b, c, h, _ = tensor.shape
-    new_width = int(h * scale)
-    delta = h - new_width
-    h_delta = int(random() * delta)
-    w_delta = int(random() * delta)
-    cropped = tensor[:, :, h_delta:(h_delta + new_width), w_delta:(w_delta + new_width)].clone()
-    return F.interpolate(cropped, size=(h, h), mode='bilinear')
-
 def random_hflip(tensor, prob):
     if prob > random():
         return tensor
@@ -316,11 +305,10 @@ class AugWrapper(nn.Module):
         super().__init__()
         self.D = D
 
-    def forward(self, images, prob = 0., detach = False):
+    def forward(self, images, prob = 0., types = [], detach = False):
         if random() < prob:
-            random_scale = random_float(0.75, 0.95)
             images = random_hflip(images, prob=0.5)
-            images = random_crop_and_resize(images, scale = random_scale)
+            images = DiffAugment(images, types=types)
 
         if detach:
             images.detach_()
@@ -673,7 +661,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., dataset_aug_prob = 0., is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., aug_types = ['translation', 'cutout'], dataset_aug_prob = 0., is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -691,7 +679,9 @@ class Trainer():
 
         self.attn_layers = cast_list(attn_layers)
         self.no_const = no_const
+
         self.aug_prob = aug_prob
+        self.aug_types = aug_types
 
         self.lr = lr
         self.lr_mlp = lr_mlp
@@ -787,6 +777,8 @@ class Trainer():
         num_layers = self.GAN.G.num_layers
 
         aug_prob   = self.aug_prob
+        aug_types  = self.aug_types
+        aug_kwargs = {'prob': aug_prob, 'types': aug_types}
 
         apply_gradient_penalty = self.steps % 4 == 0
         apply_path_penalty = self.steps > 5000 and self.steps % 32 == 0
@@ -838,11 +830,11 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = G(w_styles, noise)
-            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, prob = aug_prob)
+            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
 
             image_batch = next(self.loader).cuda(self.rank)
             image_batch.requires_grad_()
-            real_output, real_q_loss = D_aug(image_batch, prob = aug_prob)
+            real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
             real_output_loss = real_output
             fake_output_loss = fake_output
@@ -885,7 +877,7 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = G(w_styles, noise)
-            fake_output, _ = D_aug(generated_images, prob = aug_prob)
+            fake_output, _ = D_aug(generated_images, **aug_kwargs)
             loss = fake_output.mean()
             gen_loss = loss
 

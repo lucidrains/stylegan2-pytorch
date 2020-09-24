@@ -98,7 +98,7 @@ If you have one machine with multiple GPUs, the repository offers a way to utili
 You simply have to add a `--multi-gpus` flag, everyting else is taken care of. If you would like to restrict to specific GPUs, you can use the `CUDA_VISIBLE_DEVICES` environment variable to control what devices can be used. (ex. `CUDA_VISIBLE_DEVICES=0,2,3` only devices 0, 2, 3 are available)
 
 ```bash
-$ stylegan2_pytorch --data /path/to/data --multi-gpus --batch-size 32 --gradient-accumulate-every 1
+$ stylegan2_pytorch --data ./data --multi-gpus --batch-size 32 --gradient-accumulate-every 1
 ```
 
 ## Low amounts of Training Data
@@ -115,6 +115,15 @@ In the setting of low data, you can use the feature with a simple flag.
 # find a suitable probability between 0. -> 0.7 at maximum
 $ stylegan2_pytorch --data ./data --aug-prob 0.25
 ```
+
+By default, the augmentations used are `translation` and `cutout`. If you would like to add `color`, you can do so with the `--aug-types` argument.
+
+```bash
+# make sure there are no spaces between items!
+$ stylegan2_pytorch --data ./data --aug-prob 0.25 --aug-types [translation,cutout,color]
+```
+
+You can customize it to any combination of the three you would like. The differentiable augmentation code was copied and slightly modified from <a href="https://github.com/mit-han-lab/data-efficient-gans/blob/master/DiffAugment_pytorch.py">here</a>.
 
 ## Attention
 
@@ -311,6 +320,15 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
   journal   = {CoRR},  
   year      = {2018},
   url       = {http://arxiv.org/abs/1812.01243},
+}
+```
+
+```bibtex
+@article{zhao2020diffaugment,
+    title   = {Differentiable Augmentation for Data-Efficient GAN Training},
+    author  = {Zhao, Shengyu and Liu, Zhijian and Lin, Ji and Zhu, Jun-Yan and Han, Song},
+    journal = {arXiv preprint arXiv:2006.10738},
+    year    = {2020}
 }
 ```
 

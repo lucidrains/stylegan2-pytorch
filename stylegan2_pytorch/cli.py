@@ -92,6 +92,7 @@ def train_from_folder(
     attn_layers = [],
     no_const = False,
     aug_prob = 0.,
+    aug_types = ['translation', 'cutout'],
     dataset_aug_prob = 0.,
     multi_gpus = False
 ):
@@ -118,6 +119,7 @@ def train_from_folder(
         attn_layers = attn_layers,
         no_const = no_const,
         aug_prob = aug_prob,
+        aug_types = cast_list(aug_types),
         dataset_aug_prob = dataset_aug_prob
     )
 
