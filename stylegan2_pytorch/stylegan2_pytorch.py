@@ -23,8 +23,6 @@ from torch.autograd import grad as torch_grad
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from kornia.filters import filter2D
-
 import torchvision
 from torchvision import transforms
 from stylegan2_pytorch.diff_augment import DiffAugment
@@ -102,16 +100,6 @@ class PermuteToFrom(nn.Module):
         out, loss = self.fn(x)
         out = out.permute(0, 3, 1, 2)
         return out, loss
-
-class Blur(nn.Module):
-    def __init__(self):
-        super().__init__()
-        f = torch.Tensor([1, 2, 1])
-        self.register_buffer('f', f)
-    def forward(self, x):
-        f = self.f
-        f = f[None, None, :] * f [None, :, None]
-        return filter2D(x, f, normalized=True)
 
 # one layer of self-attention and feedforward, for images
 
@@ -364,10 +352,7 @@ class RGBBlock(nn.Module):
         out_filters = 3 if not rgba else 4
         self.conv = Conv2DMod(input_channel, out_filters, 1, demod=False)
 
-        self.upsample = nn.Sequential(
-            nn.Upsample(scale_factor = 2, mode='bilinear', align_corners=False),
-            Blur()
-        ) if upsample else None
+        self.upsample = nn.Upsample(scale_factor = 2, mode='bilinear', align_corners=False) if upsample else None
 
     def forward(self, x, prev_rgb, istyle):
         b, c, h, w = x.shape
@@ -465,10 +450,7 @@ class DiscriminatorBlock(nn.Module):
             leaky_relu()
         )
 
-        self.downsample = nn.Sequential(
-            Blur(),
-            nn.Conv2d(filters, filters, 3, padding = 1, stride = 2)
-        ) if downsample else None
+        self.downsample = nn.Conv2d(filters, filters, 3, padding = 1, stride = 2) if downsample else None
 
     def forward(self, x):
         res = self.conv_res(x)
