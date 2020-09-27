@@ -97,7 +97,8 @@ def train_from_folder(
     aug_prob = 0.,
     aug_types = ['translation', 'cutout'],
     dataset_aug_prob = 0.,
-    multi_gpus = False
+    multi_gpus = False,
+    calculate_fid_every = None
 ):
     model_args = dict(
         name = name,
@@ -123,7 +124,8 @@ def train_from_folder(
         no_const = no_const,
         aug_prob = aug_prob,
         aug_types = cast_list(aug_types),
-        dataset_aug_prob = dataset_aug_prob
+        dataset_aug_prob = dataset_aug_prob,
+        calculate_fid_every = calculate_fid_every
     )
 
     if generate:

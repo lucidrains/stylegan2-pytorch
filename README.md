@@ -214,6 +214,16 @@ Notes:
 * Also, you may need to spread your data across multiple archives.
 * You should run this on a `screen` window so it won't terminate once you log out of the SSH session.
 
+## Research
+
+Thanks to <a href="https://github.com/GetsEclectic">GetsEclectic</a>, you can now calculate the FID score periodically! Again, made super simple with one extra argument, as shown below.
+
+```bash
+$ stylegan2_pytorch --data ./data --calculate-fid-every 5000
+```
+
+FID results will be logged to `./results/{name}/fid_scores.txt`
+
 ## Experimental
 
 ### Feature Quantization

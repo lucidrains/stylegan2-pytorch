@@ -29,6 +29,8 @@ import torchvision
 from torchvision import transforms
 from stylegan2_pytorch.diff_augment import DiffAugment
 
+from pytorch_fid import fid_score
+
 from vector_quantize_pytorch import VectorQuantize
 from linear_attention_transformer import ImageLinearAttention
 
@@ -47,6 +49,7 @@ num_cores = multiprocessing.cpu_count()
 
 # constants
 
+CALC_FID_NUM_IMAGES = 12800
 EXTS = ['jpg', 'jpeg', 'png']
 EPS = 1e-8
 
@@ -60,7 +63,7 @@ class EMA():
         super().__init__()
         self.beta = beta
     def update_average(self, old, new):
-        if old is None:
+        if not exists(old):
             return new
         return old * self.beta + (1 - self.beta) * new
 
@@ -122,6 +125,9 @@ attn_and_ff = lambda chan: nn.Sequential(*[
 
 # helpers
 
+def exists(val):
+    return val is not None
+
 @contextmanager
 def null_context():
     yield
@@ -134,7 +140,7 @@ def combine_contexts(contexts):
     return multi_contexts
 
 def default(value, d):
-    return d if value is None else value
+    return value if exists(value) else d
 
 def cycle(iterable):
     while True:
@@ -147,7 +153,7 @@ def cast_list(el):
 def is_empty(t):
     if isinstance(t, torch.Tensor):
         return t.nelement() == 0
-    return t is None
+    return not exists(t)
 
 def raise_if_nan(t):
     if torch.isnan(t):
@@ -267,7 +273,7 @@ class expand_greyscale(object):
         else:
             raise Exception(f'image with invalid number of channels given {channels}')
 
-        if alpha is None and self.transparent:
+        if not exists(alpha) and self.transparent:
             alpha = torch.ones(1, *tensor.shape[1:], device=tensor.device)
 
         return color if not self.transparent else torch.cat((color, alpha))
@@ -374,10 +380,10 @@ class RGBBlock(nn.Module):
         style = self.to_style(istyle)
         x = self.conv(x, style)
 
-        if prev_rgb is not None:
+        if exists(prev_rgb):
             x = x + prev_rgb
 
-        if self.upsample is not None:
+        if exists(self.upsample):
             x = self.upsample(x)
 
         return x
@@ -435,7 +441,7 @@ class GeneratorBlock(nn.Module):
         self.to_rgb = RGBBlock(latent_dim, filters, upsample_rgb, rgba)
 
     def forward(self, x, prev_rgb, istyle, inoise):
-        if self.upsample is not None:
+        if exists(self.upsample):
             x = self.upsample(x)
 
         inoise = inoise[:, :x.shape[2], :x.shape[3], :]
@@ -473,7 +479,7 @@ class DiscriminatorBlock(nn.Module):
     def forward(self, x):
         res = self.conv_res(x)
         x = self.net(x)
-        if self.downsample is not None:
+        if exists(self.downsample):
             x = self.downsample(x)
         x = (x + res) * (1 / math.sqrt(2))
         return x
@@ -538,7 +544,7 @@ class Generator(nn.Module):
         x = self.initial_conv(x)
 
         for style, block, attn in zip(styles, self.blocks, self.attns):
-            if attn is not None:
+            if exists(attn):
                 x = attn(x)
             x, rgb = block(x, rgb, style, input_noise)
 
@@ -594,10 +600,10 @@ class Discriminator(nn.Module):
         for (block, attn_block, q_block) in zip(self.blocks, self.attn_blocks, self.quantize_blocks):
             x = block(x)
 
-            if attn_block is not None:
+            if exists(attn_block):
                 x = attn_block(x)
 
-            if q_block is not None:
+            if exists(q_block):
                 x, loss = q_block(x)
                 quantize_loss += loss
 
@@ -679,7 +685,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., aug_types = ['translation', 'cutout'], dataset_aug_prob = 0., is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., aug_types = ['translation', 'cutout'], dataset_aug_prob = 0., calculate_fid_every = None, is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -692,8 +698,10 @@ class Trainer():
         self.image_size = image_size
         self.network_capacity = network_capacity
         self.transparent = transparent
+
         self.fq_layers = cast_list(fq_layers)
         self.fq_dict_size = fq_dict_size
+        self.has_fq = len(self.fq_layers) > 0
 
         self.attn_layers = cast_list(attn_layers)
         self.no_const = no_const
@@ -726,9 +734,10 @@ class Trainer():
 
         self.d_loss = 0
         self.g_loss = 0
-        self.last_gp_loss = 0
-        self.last_cr_loss = 0
-        self.q_loss = 0
+        self.q_loss = None
+        self.last_gp_loss = None
+        self.last_cr_loss = None
+        self.last_fid = None
 
         self.pl_length_ma = EMA(0.99)
         self.init_folders()
@@ -736,12 +745,18 @@ class Trainer():
         self.loader = None
         self.dataset_aug_prob = dataset_aug_prob
 
+        self.calculate_fid_every = calculate_fid_every
+
         assert not (is_ddp and cl_reg), 'Contrastive loss regularization does not work well with multi GPUs yet'
         self.is_ddp = is_ddp
         self.is_main = rank == 0
         self.rank = rank
         self.world_size = world_size
 
+    @property
+    def image_extension(self):
+        return 'jpg' if not self.transparent else 'png'
+    
     def init_GAN(self):
         args, kwargs = self.GAN_params
         self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
@@ -779,9 +794,9 @@ class Trainer():
         self.loader = cycle(dataloader)
 
     def train(self):
-        assert self.loader is not None, 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
+        assert exists(self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
-        if self.GAN is None:
+        if not exists(self.GAN):
             self.init_GAN()
 
         self.GAN.train()
@@ -809,7 +824,7 @@ class Trainer():
 
         backwards = partial(loss_backwards, self.fp16)
 
-        if self.GAN.D_cl is not None:
+        if exists(self.GAN.D_cl):
             self.GAN.D_opt.zero_grad()
 
             if apply_cl_reg_to_generated:
@@ -864,10 +879,11 @@ class Trainer():
             divergence = (F.relu(1 + real_output_loss) + F.relu(1 - fake_output_loss)).mean()
             disc_loss = divergence
 
-            quantize_loss = (fake_q_loss + real_q_loss).mean()
-            self.q_loss = float(quantize_loss.detach().item())
+            if self.has_fq:
+                quantize_loss = (fake_q_loss + real_q_loss).mean()
+                self.q_loss = float(quantize_loss.detach().item())
 
-            disc_loss = disc_loss + quantize_loss
+                disc_loss = disc_loss + quantize_loss
 
             if apply_gradient_penalty:
                 gp = gradient_penalty(image_batch, real_output)
@@ -946,13 +962,21 @@ class Trainer():
             if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
                 self.evaluate(floor(self.steps / 1000))
 
+            if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
+                num_batches = math.ceil(CALC_FID_NUM_IMAGES / self.batch_size)
+                fid = self.calculate_fid(num_batches)
+                self.last_fid = fid
+
+                with open(str(self.results_dir / self.name / f'fid_scores.txt'), 'a') as f:
+                    f.write(f'{self.steps},{fid}\n')
+
         self.steps += 1
         self.av = None
 
     @torch.no_grad()
     def evaluate(self, num = 0, num_image_tiles = 8, trunc = 1.0):
         self.GAN.eval()
-        ext = 'jpg' if not self.transparent else 'png'
+        ext = self.image_extension
         num_rows = num_image_tiles
     
         latent_dim = self.GAN.G.latent_dim
@@ -995,10 +1019,49 @@ class Trainer():
         torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
 
     @torch.no_grad()
+    def calculate_fid(self, num_batches):
+        torch.cuda.empty_cache()
+
+        real_path = str(self.results_dir / self.name / 'fid_real') + '/'
+        fake_path = str(self.results_dir / self.name / 'fid_fake') + '/'
+
+        # remove any existing files used for fid calculation and recreate directories
+        rmtree(real_path, ignore_errors=True)
+        rmtree(fake_path, ignore_errors=True)
+        os.makedirs(real_path)
+        os.makedirs(fake_path)
+
+        for batch_num in tqdm(range(num_batches), desc='calculating FID - saving reals'):
+            real_batch = next(self.loader)
+            for k in range(real_batch.size(0)):
+                torchvision.utils.save_image(real_batch[k, :, :, :], real_path + '{}.png'.format(k + batch_num * self.batch_size))
+
+        # generate a bunch of fake images in results / name / fid_fake
+        self.GAN.eval()
+        ext = self.image_extension
+
+        latent_dim = self.GAN.G.latent_dim
+        image_size = self.GAN.G.image_size
+        num_layers = self.GAN.G.num_layers
+
+        for batch_num in tqdm(range(num_batches), desc='calculating FID - saving generated'):
+            # latents and noise
+            latents = noise_list(self.batch_size, num_layers, latent_dim, device=self.rank)
+            n = image_noise(self.batch_size, image_size, device=self.rank)
+
+            # moving averages
+            generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
+
+            for j in range(generated_images.size(0)):
+                torchvision.utils.save_image(generated_images[j, :, :, :], str(Path(fake_path) / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
+
+        return fid_score.calculate_fid_given_paths([real_path, fake_path], 256, True, 2048)
+
+    @torch.no_grad()
     def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
         latent_dim = G.latent_dim
 
-        if self.av is None:
+        if not exists(self.av):
             z = noise(2000, latent_dim, device=self.rank)
             samples = evaluate_in_chunks(self.batch_size, S, z).cpu().numpy()
             self.av = np.mean(samples, axis = 0)
@@ -1018,7 +1081,7 @@ class Trainer():
     @torch.no_grad()
     def generate_interpolation(self, num = 0, num_image_tiles = 8, trunc = 1.0, num_steps = 100, save_frames = False):
         self.GAN.eval()
-        ext = 'jpg' if not self.transparent else 'png'
+        ext = self.image_extension
         num_rows = num_image_tiles
 
         latent_dim = self.GAN.G.latent_dim
@@ -1056,8 +1119,19 @@ class Trainer():
                 frame.save(str(folder_path / f'{str(ind)}.{ext}'))
 
     def print_log(self):
-        pl_mean = default(self.pl_mean, 0)
-        print(f'G: {self.g_loss:.2f} | D: {self.d_loss:.2f} | GP: {self.last_gp_loss:.2f} | PL: {pl_mean:.2f} | CR: {self.last_cr_loss:.2f} | Q: {self.q_loss:.2f}')
+        data = [
+            ('G', self.g_loss),
+            ('D', self.d_loss),
+            ('GP', self.last_gp_loss),
+            ('PL', self.pl_mean),
+            ('CR', self.last_cr_loss),
+            ('Q', self.q_loss),
+            ('FID', self.last_fid)
+        ]
+
+        data = [d for d in data if exists(d[1])]
+        log = ' | '.join(map(lambda n: f'{n[0]}: {n[1]:.2f}', data))
+        print(log)
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')
