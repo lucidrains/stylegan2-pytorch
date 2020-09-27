@@ -8,7 +8,7 @@ setup(
           'stylegan2_pytorch = stylegan2_pytorch.cli:main',
       ],
   },
-  version = '1.0.2',
+  version = '1.0.4',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
