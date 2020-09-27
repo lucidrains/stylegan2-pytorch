@@ -8,7 +8,7 @@ setup(
           'stylegan2_pytorch = stylegan2_pytorch.cli:main',
       ],
   },
-  version = '1.0.4',
+  version = '1.1.0',
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
@@ -17,15 +17,16 @@ setup(
   download_url = 'https://github.com/lucidrains/stylegan2-pytorch/archive/v_036.tar.gz',
   keywords = ['generative adversarial networks', 'artificial intelligence'],
   install_requires=[
+      'contrastive_learner>=0.1.0',
       'fire',
+      'kornia',
+      'linear_attention_transformer',
       'numpy',
       'retry',
       'tqdm',
       'torch',
       'torchvision',
       'pillow',
-      'contrastive_learner>=0.1.0',
-      'linear_attention_transformer',
       'vector-quantize-pytorch'
   ],
   classifiers=[
