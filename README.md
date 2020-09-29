@@ -91,6 +91,12 @@ If a previous checkpoint contained a better generator, (which often happens as g
 $ stylegan2_pytorch --generate --load-from {checkpoint number}
 ```
 
+A technique used in both StyleGAN and BigGAN is truncating the latent values so that their values fall close to the mean. The small the truncation value, the better the samples will appear at the cost of sample variety. You can control this with the `--trunc-psi`, where values typically fall between `0.5` and `1`. It is set at `0.75` as default
+
+```bash
+$ stylegan2_pytorch --generate --trunc-psi 0.5
+```
+
 ## Multi-GPU training
 
 If you have one machine with multiple GPUs, the repository offers a way to utilize all of them for training. With multiple GPUs, each batch will be divided evenly amongst the GPUs available. For example, for 2 GPUs, with a batch size of 32, each GPU will see 16 samples.
@@ -226,6 +232,16 @@ FID results will be logged to `./results/{name}/fid_scores.txt`
 
 ## Experimental
 
+### Top-k Training for Generator
+
+A new paper has produced evidence that by simply zero-ing out the gradient contributions from samples that are deemed fake by the discriminator, the generator learns significantly better, achieving new state of the art.
+
+```python
+$ stylegan2_pytorch --data ./data --generate-top-k --generate-top-k-frac 0.5 --generate-top-k-gamma 0.99
+```
+
+Gamma is a decay schedule that slowly decreases the topk from the full batch size to the target fraction of 50% (also modifiable hyperparameter).
+
 ### Feature Quantization
 
 A recent paper reported improved results if intermediate representations of the discriminator are vector quantized. Although I have not noticed any dramatic changes, I have decided to add this as a feature, so other minds out there can investigate. To use, you have to specify which layer(s) you would like to vector quantize. Default dictionary size is `256` and is also tunable.
@@ -259,16 +275,6 @@ By default, the StyleGAN architecture styles a constant learned 4x4 block as it 
 ```python
 $ stylegan2_pytorch --data ./data --no-const
 ```
-
-## Top-k Training for Generator
-
-A new paper has produced evidence that by simply zero-ing out the gradient contributions from samples that are deemed fake by the discriminator, the generator learns significantly better, achieving new state of the art.
-
-```python
-$ stylegan2_pytorch --data ./data --generate-top-k --generate-top-k-frac 0.5 --generate-top-k-gamma 0.99
-```
-
-Gamma is a decay schedule that slowly decreases the topk from the full batch size to the target fraction of 50% (also modifiable hyperparameter).
 
 ## Appreciation
 
