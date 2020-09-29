@@ -260,6 +260,15 @@ By default, the StyleGAN architecture styles a constant learned 4x4 block as it 
 $ stylegan2_pytorch --data ./data --no-const
 ```
 
+## Top-k Training for Generator
+
+A new paper has produced evidence that by simply zero-ing out the gradient contributions from samples that are deemed fake by the discriminator, the generator learns significantly better, achieving new state of the art.
+
+```python
+$ stylegan2_pytorch --data ./data --generate-top-k --generate-top-k-frac 0.5 --generate-top-k-gamma 0.99
+```
+
+Gamma is a decay schedule that slowly decreases the topk from the full batch size to the target fraction of 50% (also modifiable hyperparameter).
 
 ## Appreciation
 
@@ -371,5 +380,16 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
     eprint  = {1807.00734},
     archivePrefix = {arXiv},
     primaryClass = {cs.LG}
+}
+```
+
+```bibtex
+@misc{sinha2020topk,
+      title   = {Top-k Training of GANs: Improving GAN Performance by Throwing Away Bad Samples},
+      author  = {Samarth Sinha and Zhengli Zhao and Anirudh Goyal and Colin Raffel and Augustus Odena},
+      year    = {2020},
+      eprint  = {2002.06224},
+      archivePrefix = {arXiv},
+      primaryClass = {stat.ML}
 }
 ```

@@ -685,7 +685,7 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., aug_types = ['translation', 'cutout'], dataset_aug_prob = 0., calculate_fid_every = None, is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
+    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., aug_types = ['translation', 'cutout'], generator_top_k = False, generator_top_k_gamma = 0.99, generator_top_k_frac = 0.5, dataset_aug_prob = 0., calculate_fid_every = None, is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
@@ -746,6 +746,10 @@ class Trainer():
         self.dataset_aug_prob = dataset_aug_prob
 
         self.calculate_fid_every = calculate_fid_every
+
+        self.generator_top_k = generator_top_k
+        self.generator_top_k_gamma = generator_top_k_gamma
+        self.generator_top_k_frac = generator_top_k_frac
 
         assert not (is_ddp and cl_reg), 'Contrastive loss regularization does not work well with multi GPUs yet'
         self.is_ddp = is_ddp
@@ -912,7 +916,17 @@ class Trainer():
 
             generated_images = G(w_styles, noise)
             fake_output, _ = D_aug(generated_images, **aug_kwargs)
-            loss = fake_output.mean()
+            fake_output_loss = fake_output
+
+            if self.generator_top_k:
+                epochs = (self.steps * batch_size * self.gradient_accumulate_every) / len(self.dataset)
+                k_frac = max(self.generator_top_k_gamma ** epochs, self.generator_top_k_frac)
+                k = math.ceil(batch_size * k_frac)
+
+                if k != batch_size:
+                    fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
+
+            loss = fake_output_loss.mean()
             gen_loss = loss
 
             if apply_path_penalty:
