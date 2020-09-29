@@ -96,6 +96,9 @@ def train_from_folder(
     no_const = False,
     aug_prob = 0.,
     aug_types = ['translation', 'cutout'],
+    generator_top_k = False,
+    generator_top_k_gamma = 0.99,
+    generator_top_k_frac = 0.5,
     dataset_aug_prob = 0.,
     multi_gpus = False,
     calculate_fid_every = None
@@ -124,6 +127,9 @@ def train_from_folder(
         no_const = no_const,
         aug_prob = aug_prob,
         aug_types = cast_list(aug_types),
+        generator_top_k = generator_top_k,
+        generator_top_k_gamma = generator_top_k_gamma,
+        generator_top_k_frac = generator_top_k_frac,
         dataset_aug_prob = dataset_aug_prob,
         calculate_fid_every = calculate_fid_every
     )
