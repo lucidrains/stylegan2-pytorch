@@ -237,10 +237,14 @@ FID results will be logged to `./results/{name}/fid_scores.txt`
 A new paper has produced evidence that by simply zero-ing out the gradient contributions from samples that are deemed fake by the discriminator, the generator learns significantly better, achieving new state of the art.
 
 ```python
-$ stylegan2_pytorch --data ./data --generate-top-k --generate-top-k-frac 0.5 --generate-top-k-gamma 0.99
+$ stylegan2_pytorch --data ./data --top-k-training
 ```
 
 Gamma is a decay schedule that slowly decreases the topk from the full batch size to the target fraction of 50% (also modifiable hyperparameter).
+
+```python
+$ stylegan2_pytorch --data ./data --top-k-training --generate-top-k-frac 0.5 --generate-top-k-gamma 0.99
+```
 
 ### Feature Quantization
 
