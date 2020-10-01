@@ -88,6 +88,7 @@ def train_from_folder(
     save_frames = False,
     num_image_tiles = 8,
     trunc_psi = 0.75,
+    mixed_prob = 0.9,
     fp16 = False,
     cl_reg = False,
     fq_layers = [],
@@ -131,7 +132,8 @@ def train_from_folder(
         generator_top_k_gamma = generator_top_k_gamma,
         generator_top_k_frac = generator_top_k_frac,
         dataset_aug_prob = dataset_aug_prob,
-        calculate_fid_every = calculate_fid_every
+        calculate_fid_every = calculate_fid_every,
+        mixed_prob = mixed_prob
     )
 
     if generate:
