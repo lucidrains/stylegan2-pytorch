@@ -17,6 +17,12 @@ Nor these cities
 
 <img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/cities.jpg" width="450" height="auto">
 
+Nor these celebrities (trained by <a href="https://github.com/yoniker">@yoniker</a>)
+
+<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/celebrities.jpg" width="450" height="auto">
+
+<img src="https://raw.githubusercontent.com/lucidrains/stylegan2-pytorch/master/samples/celebrities-2.jpg" width="450" height="auto">
+
 
 ## Install
 
@@ -152,12 +158,6 @@ Training on transparent images
 
 ```bash
 $ stylegan2_pytorch --data ./transparent/images/path --transparent
-```
-
-Using half precision for greater memory savings
-
-```bash
-$ stylegan2_pytorch --data ./data --image-size 256 --fp16
 ```
 
 ## Memory considerations
