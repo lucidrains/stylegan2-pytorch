@@ -60,6 +60,8 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
         if is_main and _ % 50 == 0:
             model.print_log()
 
+    model.save(model.checkpoint_num)
+
     if is_ddp:
         dist.destroy_process_group()
 

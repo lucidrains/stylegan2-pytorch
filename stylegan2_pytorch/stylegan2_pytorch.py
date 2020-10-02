@@ -49,9 +49,10 @@ num_cores = multiprocessing.cpu_count()
 
 # constants
 
-CALC_FID_NUM_IMAGES = 12800
 EXTS = ['jpg', 'jpeg', 'png']
 EPS = 1e-8
+EVALUATE_EVERY = 1000
+CALC_FID_NUM_IMAGES = 12800
 
 # helper classes
 
@@ -760,6 +761,10 @@ class Trainer():
     @property
     def image_extension(self):
         return 'jpg' if not self.transparent else 'png'
+
+    @property
+    def checkpoint_num(self):
+        return floor(self.steps // self.save_every)
     
     def init_GAN(self):
         args, kwargs = self.GAN_params
@@ -960,21 +965,19 @@ class Trainer():
 
         # save from NaN errors
 
-        checkpoint_num = floor(self.steps / self.save_every)
-
         if any(torch.isnan(l) for l in (total_gen_loss, total_disc_loss)):
-            print(f'NaN detected for generator or discriminator. Loading from checkpoint #{checkpoint_num}')
-            self.load(checkpoint_num)
+            print(f'NaN detected for generator or discriminator. Loading from checkpoint #{self.checkpoint_num}')
+            self.load(self.checkpoint_num)
             raise NanException
 
         # periodically save results
 
         if self.is_main:
             if self.steps % self.save_every == 0:
-                self.save(checkpoint_num)
+                self.save(self.checkpoint_num)
 
-            if self.steps % 1000 == 0 or (self.steps % 100 == 0 and self.steps < 2500):
-                self.evaluate(floor(self.steps / 1000))
+            if self.steps % EVALUATE_EVERY == 0 or (self.steps % 100 == 0 and self.steps < 2500):
+                self.evaluate(floor(self.steps / EVALUATE_EVERY))
 
             if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
                 num_batches = math.ceil(CALC_FID_NUM_IMAGES / self.batch_size)
