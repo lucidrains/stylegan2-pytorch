@@ -20,7 +20,7 @@ setup(
       'contrastive_learner>=0.1.0',
       'fire',
       'kornia',
-      'linear_attention_transformer',
+      'linear_attention_transformer>=0.12',
       'numpy',
       'retry',
       'tqdm',
