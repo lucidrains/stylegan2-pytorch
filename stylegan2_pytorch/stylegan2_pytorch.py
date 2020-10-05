@@ -120,7 +120,7 @@ class Blur(nn.Module):
 # one layer of self-attention and feedforward, for images
 
 attn_and_ff = lambda chan: nn.Sequential(*[
-    Residual(Rezero(ImageLinearAttention(chan, norm_queries = False))),
+    Residual(Rezero(ImageLinearAttention(chan, norm_queries = True))),
     Residual(Rezero(nn.Sequential(nn.Conv2d(chan, chan * 2, 1), leaky_relu(), nn.Conv2d(chan * 2, chan, 1))))
 ])
 
