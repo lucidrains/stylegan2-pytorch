@@ -28,7 +28,7 @@ def set_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name):
+def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed):
     is_main = rank == 0
     is_ddp = world_size > 1
 
@@ -104,7 +104,8 @@ def train_from_folder(
     generator_top_k_frac = 0.5,
     dataset_aug_prob = 0.,
     multi_gpus = False,
-    calculate_fid_every = None
+    calculate_fid_every = None,
+    seed = 42
 ):
     model_args = dict(
         name = name,
@@ -157,11 +158,11 @@ def train_from_folder(
     world_size = torch.cuda.device_count()
 
     if world_size == 1 or not multi_gpus:
-        run_training(0, 1, model_args, data, load_from, new, num_train_steps, name)
+        run_training(0, 1, model_args, data, load_from, new, num_train_steps, name, seed)
         return
 
     mp.spawn(run_training,
-        args=(world_size, model_args, data, load_from, new, num_train_steps, name),
+        args=(world_size, model_args, data, load_from, new, num_train_steps, name, seed),
         nprocs=world_size,
         join=True)
 
