@@ -284,6 +284,8 @@ $ stylegan2_pytorch --data ./data --no-const
 
 <a href="https://github.com/lucidrains/unet-stylegan2">Stylegan2 + Unet Discriminator</a>
 
+I have gotten really good results with a unet discriminator, but the architecturally change was too big to fit as an option in this repository. If you are aiming for perfection, feel free to try it.
+
 ## Appreciation
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0
