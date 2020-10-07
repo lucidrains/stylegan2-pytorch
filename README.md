@@ -280,6 +280,10 @@ By default, the StyleGAN architecture styles a constant learned 4x4 block as it 
 $ stylegan2_pytorch --data ./data --no-const
 ```
 
+## Alternatives
+
+<a href="https://github.com/lucidrains/unet-stylegan2">Stylegan2 + Unet Discriminator</a>
+
 ## Appreciation
 
 Thank you to Matthew Mann for his inspiring [simple port](https://github.com/manicman1999/StyleGAN2-Tensorflow-2.0) for Tensorflow 2.0
