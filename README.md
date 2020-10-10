@@ -137,6 +137,14 @@ $ stylegan2_pytorch --data ./data --aug-prob 0.25 --aug-types [translation,cutou
 
 You can customize it to any combination of the three you would like. The differentiable augmentation code was copied and slightly modified from <a href="https://github.com/mit-han-lab/data-efficient-gans/blob/master/DiffAugment_pytorch.py">here</a>.
 
+## When do I stop training?
+
+For as long as possible until the adversarial game between the two neural nets fall apart (we call this divergence). By default, the number of training steps is set to `150000` for 128x128 images, but you will certainly want this number to be higher if the GAN doesn't diverge by the end of training, or if you are training at a higher resolution.
+
+```bash
+$ stylegan2_pytorch --data ./data --image-size 512 --num-train-steps 1000000
+```
+
 ## Attention
 
 This framework also allows for you to add an efficient form of self-attention to the designated layers of the discriminator (and the symmetric layer of the generator), which will greatly improve results. The more attention you can afford, the better!
