@@ -605,7 +605,7 @@ class Discriminator(nn.Module):
                 x = attn_block(x)
 
             if exists(q_block):
-                x, loss = q_block(x)
+                x, _, loss = q_block(x)
                 quantize_loss += loss
 
         x = self.final_conv(x)
