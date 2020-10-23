@@ -27,6 +27,7 @@ from kornia.filters import filter2D
 
 import torchvision
 from torchvision import transforms
+from stylegan2_pytorch.version import __version__
 from stylegan2_pytorch.diff_augment import DiffAugment
 
 from pytorch_fid import fid_score
@@ -1164,7 +1165,10 @@ class Trainer():
         self.init_folders()
 
     def save(self, num):
-        save_data = {'GAN': self.GAN.state_dict()}
+        save_data = {
+            'GAN': self.GAN.state_dict(),
+            'version': __version__
+        }
 
         if self.GAN.fp16:
             save_data['amp'] = amp.state_dict()
@@ -1188,11 +1192,14 @@ class Trainer():
 
         load_data = torch.load(self.model_name(name))
 
-        # make backwards compatible
-        if 'GAN' not in load_data:
-            load_data = {'GAN': load_data}
+        if 'version' in load_data:
+            print(f"loading from version {load_data['version']}")
 
-        self.GAN.load_state_dict(load_data['GAN'])
+        try:
+            self.GAN.load_state_dict(load_data['GAN'])
+        except:
+            print('unable to load save model. please try downgrading the package to the version specified by the saved model')
+            exit()
 
         if self.GAN.fp16 and 'amp' in load_data:
             amp.load_state_dict(load_data['amp'])

@@ -1,4 +1,8 @@
+import sys
 from setuptools import setup, find_packages
+
+sys.path[0:0] = ['stylegan2_pytorch']
+from version import __version__
 
 setup(
   name = 'stylegan2_pytorch',
@@ -8,7 +12,7 @@ setup(
           'stylegan2_pytorch = stylegan2_pytorch.cli:main',
       ],
   },
-  version = '1.2.4',
+  version = __version__,
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
   author = 'Phil Wang',
