@@ -1197,9 +1197,8 @@ class Trainer():
 
         try:
             self.GAN.load_state_dict(load_data['GAN'])
-        except:
+        except Exception as e:
             print('unable to load save model. please try downgrading the package to the version specified by the saved model')
-            exit()
-
+            raise e
         if self.GAN.fp16 and 'amp' in load_data:
             amp.load_state_dict(load_data['amp'])
