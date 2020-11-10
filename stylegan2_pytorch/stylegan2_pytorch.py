@@ -330,7 +330,7 @@ class AugWrapper(nn.Module):
             images = DiffAugment(images, types=types)
 
         if detach:
-            images.detach_()
+            images = images.detach()
 
         return self.D(images)
 
