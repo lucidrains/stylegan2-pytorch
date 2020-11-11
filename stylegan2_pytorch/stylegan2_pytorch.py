@@ -1261,6 +1261,7 @@ class ModelLoader:
         self.model.load(load_from)
 
     def noise_to_styles(self, noise, trunc_psi = None):
+        noise = noise.cuda()
         w = self.model.GAN.S(noise)
         if exists(trunc_psi):
             w = self.model.truncate_style(w)
