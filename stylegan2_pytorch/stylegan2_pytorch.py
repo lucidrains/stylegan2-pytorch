@@ -686,13 +686,54 @@ class StyleGAN2(nn.Module):
         return x
 
 class Trainer():
-    def __init__(self, name, results_dir, models_dir, image_size, network_capacity, transparent = False, batch_size = 4, mixed_prob = 0.9, gradient_accumulate_every=1, lr = 2e-4, lr_mlp = 1., ttur_mult = 2, rel_disc_loss = False, num_workers = None, save_every = 1000, evaluate_every = 1000, trunc_psi = 0.6, fp16 = False, cl_reg = False, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, aug_prob = 0., aug_types = ['translation', 'cutout'], top_k_training = False, generator_top_k_gamma = 0.99, generator_top_k_frac = 0.5, dataset_aug_prob = 0., calculate_fid_every = None, is_ddp = False, rank = 0, world_size = 1, *args, **kwargs):
+    def __init__(
+        self,
+        name = 'default',
+        results_dir = 'results',
+        models_dir = 'models',
+        base_dir = './',
+        image_size = 128,
+        network_capacity = 16,
+        transparent = False,
+        batch_size = 4,
+        mixed_prob = 0.9,
+        gradient_accumulate_every=1,
+        lr = 2e-4,
+        lr_mlp = 1.,
+        ttur_mult = 2,
+        rel_disc_loss = False,
+        num_workers = None,
+        save_every = 1000,
+        evaluate_every = 1000,
+        trunc_psi = 0.6,
+        fp16 = False,
+        cl_reg = False,
+        fq_layers = [],
+        fq_dict_size = 256,
+        attn_layers = [],
+        no_const = False,
+        aug_prob = 0.,
+        aug_types = ['translation', 'cutout'],
+        top_k_training = False,
+        generator_top_k_gamma = 0.99,
+        generator_top_k_frac = 0.5,
+        dataset_aug_prob = 0.,
+        calculate_fid_every = None,
+        is_ddp = False,
+        rank = 0,
+        world_size = 1,
+        *args,
+        **kwargs
+    ):
         self.GAN_params = [args, kwargs]
         self.GAN = None
 
         self.name = name
-        self.results_dir = Path(results_dir)
-        self.models_dir = Path(models_dir)
+
+        base_dir = Path(base_dir)
+        self.base_dir = base_dir
+        self.results_dir = base_dir / results_dir
+        self.models_dir = base_dir / models_dir
         self.config_path = self.models_dir / name / '.config.json'
 
         assert log2(image_size).is_integer(), 'image size must be a power of 2 (64, 128, 256, 512, 1024)'
@@ -1076,23 +1117,34 @@ class Trainer():
         return fid_score.calculate_fid_given_paths([real_path, fake_path], 256, True, 2048)
 
     @torch.no_grad()
-    def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
-        latent_dim = G.latent_dim
+    def truncate_style(self, tensor, trunc_psi = 0.75):
+        S = self.GAN.S
+        batch_size = self.batch_size
+        latent_dim = self.GAN.G.latent_dim
 
         if not exists(self.av):
             z = noise(2000, latent_dim, device=self.rank)
-            samples = evaluate_in_chunks(self.batch_size, S, z).cpu().numpy()
+            samples = evaluate_in_chunks(batch_size, S, z).cpu().numpy()
             self.av = np.mean(samples, axis = 0)
             self.av = np.expand_dims(self.av, axis = 0)
-            
-        w_space = []
-        for tensor, num_layers in style:
-            tmp = S(tensor)
-            av_torch = torch.from_numpy(self.av).cuda(self.rank)
-            tmp = trunc_psi * (tmp - av_torch) + av_torch
-            w_space.append((tmp, num_layers))
 
-        w_styles = styles_def_to_tensor(w_space)
+        av_torch = torch.from_numpy(self.av).cuda(self.rank)
+        tensor = trunc_psi * (tensor - av_torch) + av_torch
+        return tensor
+
+    @torch.no_grad()
+    def truncate_style_defs(self, w, trunc_psi = 0.75):
+        w_space = []
+        for tensor, num_layers in w:
+            tensor = self.truncate_style(tensor, trunc_psi = trunc_psi)            
+            w_space.append((tensor, num_layers))
+        return w_space
+
+    @torch.no_grad()
+    def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
+        w = map(lambda t: (S(t[0]), t[1]), style)
+        w_truncated = self.truncate_style_defs(w, trunc_psi = trunc_psi)
+        w_styles = styles_def_to_tensor(w_truncated)
         generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi)
         return generated_images.clamp_(0., 1.)
 
@@ -1159,8 +1211,8 @@ class Trainer():
         (self.models_dir / self.name).mkdir(parents=True, exist_ok=True)
 
     def clear(self):
-        rmtree(f'./models/{self.name}', True)
-        rmtree(f'./results/{self.name}', True)
+        rmtree(str(self.models_dir / self.name), True)
+        rmtree(str(self.results_dir / self.name), True)
         rmtree(str(self.config_path), True)
         self.init_folders()
 
@@ -1202,3 +1254,27 @@ class Trainer():
             raise e
         if self.GAN.fp16 and 'amp' in load_data:
             amp.load_state_dict(load_data['amp'])
+
+class ModelLoader:
+    def __init__(self, *, base_dir, name = 'default', load_from = -1):
+        self.model = Trainer(name = name, base_dir = base_dir)
+        self.model.load(load_from)
+
+    def noise_to_styles(self, noise, trunc_psi = None):
+        w = self.model.GAN.S(noise)
+        if exists(trunc_psi):
+            w = self.model.truncate_style(w)
+        return w
+
+    def styles_to_images(self, w):
+        batch_size, *_ = w.shape
+        num_layers = self.model.GAN.G.num_layers
+        image_size = self.model.image_size
+        w_def = [(w, num_layers)]
+
+        w_tensors = styles_def_to_tensor(w_def)
+        noise = image_noise(batch_size, image_size, device = 0)
+
+        images = self.model.GAN.G(w_tensors, noise)
+        images.clamp_(0., 1.)
+        return images
