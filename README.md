@@ -261,6 +261,25 @@ images  = loader.styles_to_images(styles) # call the generator on intermediate s
 save_image(images, './sample.jpg') # save your images, or do whatever you desire
 ```
 
+### Logging to experiment tracker
+
+To log the losses to an open source experiment tracker (Aim), you simply need to pass an extra flag like so.
+
+```bash
+$ stylegan2_pytorch --data ./data --log
+```
+
+Then, you need to make sure you have <a href="https://docs.docker.com/get-docker/">Docker installed</a>. Following the instructions at <a href="https://github.com/aimhubio/aim">Aim</a>, you execute the following in your terminal.
+
+```bash
+$ aim up
+```
+
+Then open up your browser to the address and you should see
+
+<img src="./images/aim.png" width="600px"></img>
+
+
 ## Experimental
 
 ### Top-k Training for Generator

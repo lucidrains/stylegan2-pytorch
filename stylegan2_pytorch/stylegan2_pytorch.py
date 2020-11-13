@@ -44,6 +44,8 @@ try:
 except:
     APEX_AVAILABLE = False
 
+import aim
+
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
 num_cores = multiprocessing.cpu_count()
@@ -722,6 +724,7 @@ class Trainer():
         is_ddp = False,
         rank = 0,
         world_size = 1,
+        log = False,
         *args,
         **kwargs
     ):
@@ -800,6 +803,8 @@ class Trainer():
         self.rank = rank
         self.world_size = world_size
 
+        self.logger = aim.Session(experiment=name) if log else None
+
     @property
     def image_extension(self):
         return 'jpg' if not self.transparent else 'png'
@@ -807,7 +812,11 @@ class Trainer():
     @property
     def checkpoint_num(self):
         return floor(self.steps // self.save_every)
-    
+
+    @property
+    def hparams(self):
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity}
+        
     def init_GAN(self):
         args, kwargs = self.GAN_params
         self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
@@ -818,6 +827,9 @@ class Trainer():
             self.G_ddp = DDP(self.GAN.G, **ddp_kwargs)
             self.D_ddp = DDP(self.GAN.D, **ddp_kwargs)
             self.D_aug_ddp = DDP(self.GAN.D_aug, **ddp_kwargs)
+
+        if exists(self.logger):
+            self.logger.set_params(self.hparams)
 
     def write_config(self):
         self.config_path.write_text(json.dumps(self.config()))
@@ -939,6 +951,7 @@ class Trainer():
             if apply_gradient_penalty:
                 gp = gradient_penalty(image_batch, real_output)
                 self.last_gp_loss = gp.clone().detach().item()
+                self.track(self.last_gp_loss, 'GP')
                 disc_loss = disc_loss + gp
 
             disc_loss = disc_loss / self.gradient_accumulate_every
@@ -948,6 +961,8 @@ class Trainer():
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
         self.d_loss = float(total_disc_loss)
+        self.track(self.d_loss, 'D')
+
         self.GAN.D_opt.step()
 
         # train generator
@@ -992,12 +1007,15 @@ class Trainer():
             total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
 
         self.g_loss = float(total_gen_loss)
+        self.track(self.g_loss, 'G')
+
         self.GAN.G_opt.step()
 
         # calculate moving averages
 
         if apply_path_penalty and not np.isnan(avg_pl_length):
             self.pl_mean = self.pl_length_ma.update_average(self.pl_mean, avg_pl_length)
+            self.track(self.pl_mean, 'PL')
 
         if self.is_main and self.steps % 10 == 0 and self.steps > 20000:
             self.GAN.EMA()
@@ -1202,6 +1220,11 @@ class Trainer():
         data = [d for d in data if exists(d[1])]
         log = ' | '.join(map(lambda n: f'{n[0]}: {n[1]:.2f}', data))
         print(log)
+
+    def track(self, value, name):
+        if not exists(self.logger):
+            return
+        self.logger.track(value, name = name)
 
     def model_name(self, num):
         return str(self.models_dir / self.name / f'model_{num}.pt')
