@@ -696,6 +696,7 @@ class Trainer():
         base_dir = './',
         image_size = 128,
         network_capacity = 16,
+        fmap_max = 512,
         transparent = False,
         batch_size = 4,
         mixed_prob = 0.9,
@@ -742,6 +743,7 @@ class Trainer():
         assert log2(image_size).is_integer(), 'image size must be a power of 2 (64, 128, 256, 512, 1024)'
         self.image_size = image_size
         self.network_capacity = network_capacity
+        self.fmap_max = fmap_max
         self.transparent = transparent
 
         self.fq_layers = cast_list(fq_layers)
@@ -819,7 +821,7 @@ class Trainer():
         
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
+        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, fmap_max = self.fmap_max, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
 
         if self.is_ddp:
             ddp_kwargs = {'device_ids': [self.rank]}
@@ -841,6 +843,7 @@ class Trainer():
         self.transparent = config['transparent']
         self.fq_layers = config['fq_layers']
         self.fq_dict_size = config['fq_dict_size']
+        self.fmap_max = config.pop('fmap_max', 512)
         self.attn_layers = config.pop('attn_layers', [])
         self.no_const = config.pop('no_const', False)
         del self.GAN
