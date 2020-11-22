@@ -183,6 +183,8 @@ $ stylegan2_pytorch --data /path/to/data \
 
 2. Network capacity - You can decrease the neural network capacity to lessen the memory requirements. Just be aware that this has been shown to degrade generation performance.
 
+If none of this works, you can settle for <a href="https://github.com/lucidrains/lightweight-gan">'Lightweight' GAN</a>, which will allow you to tradeoff quality to train at greater resolutions in reasonable amount of time.
+
 ## Deployment on AWS
 
 Below are some steps which may be helpful for deployment using Amazon Web Services. In order to use this, you will have
