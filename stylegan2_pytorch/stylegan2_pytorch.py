@@ -19,6 +19,7 @@ from torch import nn
 from torch.utils import data
 from torch.optim import Adam
 import torch.nn.functional as F
+from torch.cuda.amp import GradScaler, autocast
 from torch.autograd import grad as torch_grad
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -38,12 +39,6 @@ from linear_attention_transformer import ImageLinearAttention
 from PIL import Image
 from pathlib import Path
 
-try:
-    from apex import amp
-    APEX_AVAILABLE = True
-except:
-    APEX_AVAILABLE = False
-
 import aim
 
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
@@ -53,7 +48,6 @@ num_cores = multiprocessing.cpu_count()
 # constants
 
 EXTS = ['jpg', 'jpeg', 'png']
-EPS = 1e-8
 CALC_FID_NUM_IMAGES = 12800
 
 # helper classes
@@ -175,13 +169,6 @@ def gradient_accumulate_contexts(gradient_accumulate_every, is_ddp, ddps):
         with context():
             yield
 
-def loss_backwards(fp16, loss, optimizer, loss_id, **kwargs):
-    if fp16:
-        with amp.scale_loss(loss, optimizer, loss_id) as scaled_loss:
-            scaled_loss.backward(**kwargs)
-    else:
-        loss.backward(**kwargs)
-
 def gradient_penalty(images, output, weight = 10):
     batch_size = images.shape[0]
     gradients = torch_grad(outputs=output, inputs=images,
@@ -244,6 +231,17 @@ def slerp(val, low, high):
     res = (torch.sin((1.0 - val) * omega) / so).unsqueeze(1) * low + (torch.sin(val * omega) / so).unsqueeze(1) * high
     return res
 
+def backward(is_amp, loss, scaler):
+    if is_amp:
+        return scaler.scale(loss).backward()
+    loss.backward()
+
+def optimizer_step(is_amp, optimizer, scaler):
+    if is_amp:
+        scaler.step(optimizer)
+        scaler.update()
+        return
+    optimizer.step()
 # dataset
 
 def convert_rgb_to_transparent(image):
@@ -392,7 +390,7 @@ class RGBBlock(nn.Module):
         return x
 
 class Conv2DMod(nn.Module):
-    def __init__(self, in_chan, out_chan, kernel, demod=True, stride=1, dilation=1, **kwargs):
+    def __init__(self, in_chan, out_chan, kernel, demod=True, stride=1, dilation=1, eps=1e-8, **kwargs):
         super().__init__()
         self.filters = out_chan
         self.demod = demod
@@ -400,6 +398,7 @@ class Conv2DMod(nn.Module):
         self.stride = stride
         self.dilation = dilation
         self.weight = nn.Parameter(torch.randn((out_chan, in_chan, kernel, kernel)))
+        self.eps = eps
         nn.init.kaiming_normal_(self.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
 
     def _get_same_padding(self, size, kernel, dilation, stride):
@@ -413,7 +412,7 @@ class Conv2DMod(nn.Module):
         weights = w2 * (w1 + 1)
 
         if self.demod:
-            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdim=True) + EPS)
+            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdim=True) + self.eps)
             weights = weights * d
 
         x = x.reshape(1, -1, h, w)
@@ -616,7 +615,7 @@ class Discriminator(nn.Module):
         return x.squeeze(), quantize_loss
 
 class StyleGAN2(nn.Module):
-    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, fp16 = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
+    def __init__(self, image_size, latent_dim = 512, fmap_max = 512, style_depth = 8, network_capacity = 16, transparent = False, cl_reg = False, steps = 1, lr = 1e-4, ttur_mult = 2, fq_layers = [], fq_dict_size = 256, attn_layers = [], no_const = False, lr_mlp = 0.1, rank = 0):
         super().__init__()
         self.lr = lr
         self.steps = steps
@@ -654,11 +653,6 @@ class StyleGAN2(nn.Module):
         self.reset_parameter_averaging()
 
         self.cuda(rank)
-
-        # startup apex mixed precision
-        self.fp16 = fp16
-        if fp16:
-            (self.S, self.G, self.D, self.SE, self.GE), (self.G_opt, self.D_opt) = amp.initialize([self.S, self.G, self.D, self.SE, self.GE], [self.G_opt, self.D_opt], opt_level='O1', num_losses=3)
 
     def _init_weights(self):
         for m in self.modules():
@@ -709,7 +703,7 @@ class Trainer():
         save_every = 1000,
         evaluate_every = 1000,
         trunc_psi = 0.6,
-        fp16 = False,
+        amp = False,
         cl_reg = False,
         fq_layers = [],
         fq_dict_size = 256,
@@ -771,12 +765,17 @@ class Trainer():
         self.av = None
         self.trunc_psi = trunc_psi
 
+        self.gp_weight = 10.
         self.pl_mean = None
 
         self.gradient_accumulate_every = gradient_accumulate_every
 
-        assert not fp16 or fp16 and APEX_AVAILABLE, 'Apex is not available for you to use mixed precision training'
-        self.fp16 = fp16
+        self.amp = amp
+        self.D_scaler = None
+        self.G_scaler = None
+        if amp:
+            self.D_scaler = GradScaler()
+            self.G_scaler = GradScaler()
 
         self.cl_reg = cl_reg
 
@@ -821,7 +820,7 @@ class Trainer():
         
     def init_GAN(self):
         args, kwargs = self.GAN_params
-        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, fmap_max = self.fmap_max, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, fp16 = self.fp16, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
+        self.GAN = StyleGAN2(lr = self.lr, lr_mlp = self.lr_mlp, ttur_mult = self.ttur_mult, image_size = self.image_size, network_capacity = self.network_capacity, fmap_max = self.fmap_max, transparent = self.transparent, fq_layers = self.fq_layers, fq_dict_size = self.fq_dict_size, attn_layers = self.attn_layers, cl_reg = self.cl_reg, no_const = self.no_const, rank = self.rank, *args, **kwargs)
 
         if self.is_ddp:
             ddp_kwargs = {'device_ids': [self.rank]}
@@ -888,7 +887,9 @@ class Trainer():
         D = self.GAN.D if not self.is_ddp else self.D_ddp
         D_aug = self.GAN.D_aug if not self.is_ddp else self.D_aug_ddp
 
-        backwards = partial(loss_backwards, self.fp16)
+        backwards_ = partial(backward, self.amp)
+        optimizer_step_ = partial(optimizer_step, self.amp)
+        amp_context = autocast if self.amp else null_context
 
         if exists(self.GAN.D_cl):
             self.GAN.D_opt.zero_grad()
@@ -925,48 +926,62 @@ class Trainer():
             style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
             noise = image_noise(batch_size, image_size, device=self.rank)
 
-            w_space = latent_to_w(S, style)
-            w_styles = styles_def_to_tensor(w_space)
-
-            generated_images = G(w_styles, noise)
-            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
-
             image_batch = next(self.loader).cuda(self.rank)
             image_batch.requires_grad_()
-            real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
-            real_output_loss = real_output
-            fake_output_loss = fake_output
+            with amp_context():
+                w_space = latent_to_w(S, style)
+                w_styles = styles_def_to_tensor(w_space)
 
-            if self.rel_disc_loss:
-                real_output_loss = real_output_loss - fake_output.mean()
-                fake_output_loss = fake_output_loss - real_output.mean()
+                generated_images = G(w_styles, noise)
+                fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
+                real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
-            divergence = (F.relu(1 + real_output_loss) + F.relu(1 - fake_output_loss)).mean()
-            disc_loss = divergence
+                real_output_loss = real_output
+                fake_output_loss = fake_output
 
-            if self.has_fq:
-                quantize_loss = (fake_q_loss + real_q_loss).mean()
-                self.q_loss = float(quantize_loss.detach().item())
+                if self.rel_disc_loss:
+                    real_output_loss = real_output_loss - fake_output.mean()
+                    fake_output_loss = fake_output_loss - real_output.mean()
 
-                disc_loss = disc_loss + quantize_loss
+                divergence = (F.relu(1 + real_output_loss) + F.relu(1 - fake_output_loss)).mean()
+                disc_loss = divergence
+
+                if self.has_fq:
+                    quantize_loss = (fake_q_loss + real_q_loss).mean()
+                    self.q_loss = float(quantize_loss.detach().item())
+
+                    disc_loss = disc_loss + quantize_loss
 
             if apply_gradient_penalty:
-                gp = gradient_penalty(image_batch, real_output)
-                self.last_gp_loss = gp.clone().detach().item()
-                self.track(self.last_gp_loss, 'GP')
-                disc_loss = disc_loss + gp
+                scaled_loss = self.D_scaler.scale(disc_loss) if self.amp else disc_loss
+                scaled_gradients = torch_grad(outputs=[scaled_loss], inputs=image_batch,
+                                              grad_outputs=[torch.ones(scaled_loss.size(), device = scaled_loss.device)],
+                                              create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-            disc_loss = disc_loss / self.gradient_accumulate_every
+                inv_scale = (1. / self.D_scaler.get_scale()) if self.amp else 1.
+                gradients = scaled_gradients * inv_scale
+
+                with amp_context():
+                    gradients = gradients.reshape(batch_size, -1)
+                    gp =  self.gp_weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+
+                    if not torch.isnan(gp):
+                        disc_loss = disc_loss + gp
+                        self.last_gp_loss = gp.clone().detach().item()
+
+            with amp_context():
+                disc_loss = disc_loss / self.gradient_accumulate_every
+
             disc_loss.register_hook(raise_if_nan)
-            backwards(disc_loss, self.GAN.D_opt, loss_id = 1)
+            backwards_(disc_loss, self.D_scaler)
 
             total_disc_loss += divergence.detach().item() / self.gradient_accumulate_every
 
         self.d_loss = float(total_disc_loss)
         self.track(self.d_loss, 'D')
 
-        self.GAN.D_opt.step()
+        optimizer_step_(self.GAN.D_opt, self.D_scaler)
 
         # train generator
 
@@ -976,43 +991,45 @@ class Trainer():
             style = get_latents_fn(batch_size, num_layers, latent_dim, device=self.rank)
             noise = image_noise(batch_size, image_size, device=self.rank)
 
-            w_space = latent_to_w(S, style)
-            w_styles = styles_def_to_tensor(w_space)
+            with amp_context():
+                w_space = latent_to_w(S, style)
+                w_styles = styles_def_to_tensor(w_space)
 
-            generated_images = G(w_styles, noise)
-            fake_output, _ = D_aug(generated_images, **aug_kwargs)
-            fake_output_loss = fake_output
+                generated_images = G(w_styles, noise)
+                fake_output, _ = D_aug(generated_images, **aug_kwargs)
+                fake_output_loss = fake_output
 
-            if self.top_k_training:
-                epochs = (self.steps * batch_size * self.gradient_accumulate_every) / len(self.dataset)
-                k_frac = max(self.generator_top_k_gamma ** epochs, self.generator_top_k_frac)
-                k = math.ceil(batch_size * k_frac)
+                if self.top_k_training:
+                    epochs = (self.steps * batch_size * self.gradient_accumulate_every) / len(self.dataset)
+                    k_frac = max(self.generator_top_k_gamma ** epochs, self.generator_top_k_frac)
+                    k = math.ceil(batch_size * k_frac)
 
-                if k != batch_size:
-                    fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
+                    if k != batch_size:
+                        fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
 
-            loss = fake_output_loss.mean()
-            gen_loss = loss
+                loss = fake_output_loss.mean()
+                gen_loss = loss
 
-            if apply_path_penalty:
-                pl_lengths = calc_pl_lengths(w_styles, generated_images)
-                avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
+                if apply_path_penalty:
+                    pl_lengths = calc_pl_lengths(w_styles, generated_images)
+                    avg_pl_length = np.mean(pl_lengths.detach().cpu().numpy())
 
-                if not is_empty(self.pl_mean):
-                    pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
-                    if not torch.isnan(pl_loss):
-                        gen_loss = gen_loss + pl_loss
+                    if not is_empty(self.pl_mean):
+                        pl_loss = ((pl_lengths - self.pl_mean) ** 2).mean()
+                        if not torch.isnan(pl_loss):
+                            gen_loss = gen_loss + pl_loss
 
-            gen_loss = gen_loss / self.gradient_accumulate_every
+                gen_loss = gen_loss / self.gradient_accumulate_every
+
             gen_loss.register_hook(raise_if_nan)
-            backwards(gen_loss, self.GAN.G_opt, loss_id = 2)
+            backwards_(gen_loss, self.G_scaler)
 
             total_gen_loss += loss.detach().item() / self.gradient_accumulate_every
 
         self.g_loss = float(total_gen_loss)
         self.track(self.g_loss, 'G')
 
-        self.GAN.G_opt.step()
+        optimizer_step_(self.GAN.G_opt, self.G_scaler)
 
         # calculate moving averages
 
@@ -1248,8 +1265,11 @@ class Trainer():
             'version': __version__
         }
 
-        if self.GAN.fp16:
-            save_data['amp'] = amp.state_dict()
+        if self.amp:
+            save_data['amp'] = {
+                'D_scaler': self.D_scaler.state_dict(),
+                'G_scaler': self.G_scaler.state_dict()
+            }
 
         torch.save(save_data, self.model_name(num))
         self.write_config()
@@ -1278,8 +1298,10 @@ class Trainer():
         except Exception as e:
             print('unable to load save model. please try downgrading the package to the version specified by the saved model')
             raise e
-        if self.GAN.fp16 and 'amp' in load_data:
-            amp.load_state_dict(load_data['amp'])
+
+        if self.amp and 'amp' in load_data:
+            self.D_scaler.load_state_dict(load_data['amp']['D_scaler'])
+            self.G_scaler.load_state_dict(load_data['amp']['G_scaler'])
 
 class ModelLoader:
     def __init__(self, *, base_dir, name = 'default', load_from = -1):
