@@ -87,6 +87,7 @@ def train_from_folder(
     save_every = 1000,
     evaluate_every = 1000,
     generate = False,
+    num_generate = 1,
     generate_interpolation = False,
     interpolation_num_steps = 100,
     save_frames = False,
@@ -149,7 +150,8 @@ def train_from_folder(
         model = Trainer(**model_args)
         model.load(load_from)
         samples_name = timestamped_filename()
-        model.evaluate(samples_name, num_image_tiles)
+        for num in tqdm(range(num_generate)):
+            model.evaluate(f'{samples_name}-{num}', num_image_tiles)
         print(f'sample images generated at {results_dir}/{name}/{samples_name}')
         return
 
