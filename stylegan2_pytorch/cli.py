@@ -128,6 +128,7 @@ def train_from_folder(
         num_workers = num_workers,
         save_every = save_every,
         evaluate_every = evaluate_every,
+        num_image_tiles = num_image_tiles,
         trunc_psi = trunc_psi,
         fp16 = fp16,
         cl_reg = cl_reg,

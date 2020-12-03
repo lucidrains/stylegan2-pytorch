@@ -708,6 +708,7 @@ class Trainer():
         num_workers = None,
         save_every = 1000,
         evaluate_every = 1000,
+        num_image_tiles = 8,
         trunc_psi = 0.6,
         fp16 = False,
         cl_reg = False,
@@ -764,6 +765,7 @@ class Trainer():
         self.num_workers = num_workers
         self.mixed_prob = mixed_prob
 
+        self.num_image_tiles = num_image_tiles
         self.evaluate_every = evaluate_every
         self.save_every = save_every
         self.steps = 0
@@ -1054,10 +1056,10 @@ class Trainer():
         self.av = None
 
     @torch.no_grad()
-    def evaluate(self, num = 0, num_image_tiles = 8, trunc = 1.0):
+    def evaluate(self, num = 0, trunc = 1.0):
         self.GAN.eval()
         ext = self.image_extension
-        num_rows = num_image_tiles
+        num_rows = self.num_image_tiles
     
         latent_dim = self.GAN.G.latent_dim
         image_size = self.GAN.G.image_size
