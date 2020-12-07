@@ -560,7 +560,7 @@ class Discriminator(nn.Module):
         num_init_filters = 3 if not transparent else 4
 
         blocks = []
-        filters = [num_init_filters] + [(64) * (2 ** i) for i in range(num_layers + 1)]
+        filters = [num_init_filters] + [(network_capacity * 4) * (2 ** i) for i in range(num_layers + 1)]
 
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
