@@ -236,6 +236,14 @@ Notes:
 
 Thanks to <a href="https://github.com/GetsEclectic">GetsEclectic</a>, you can now calculate the FID score periodically! Again, made super simple with one extra argument, as shown below.
 
+Firstly, install the `pytorch_fid` package
+
+```bash
+$ pip install pytorch-fid
+```
+
+Followed by
+
 ```bash
 $ stylegan2_pytorch --data ./data --calculate-fid-every 5000
 ```

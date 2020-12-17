@@ -32,7 +32,6 @@ setup(
       'torch',
       'torchvision',
       'pillow',
-      'pytorch-fid',
       'vector-quantize-pytorch>=0.1.0'
   ],
   classifiers=[

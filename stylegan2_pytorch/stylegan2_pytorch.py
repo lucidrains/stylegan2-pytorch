@@ -30,8 +30,6 @@ from torchvision import transforms
 from stylegan2_pytorch.version import __version__
 from stylegan2_pytorch.diff_augment import DiffAugment
 
-from pytorch_fid import fid_score
-
 from vector_quantize_pytorch import VectorQuantize
 from linear_attention_transformer import ImageLinearAttention
 
@@ -1102,6 +1100,7 @@ class Trainer():
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
+        from pytorch_fid import fid_score
         torch.cuda.empty_cache()
 
         real_path = str(self.results_dir / self.name / 'fid_real') + '/'
