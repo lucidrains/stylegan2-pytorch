@@ -710,6 +710,7 @@ class Trainer():
         trunc_psi = 0.6,
         fp16 = False,
         cl_reg = False,
+        no_pl_reg = False,
         fq_layers = [],
         fq_dict_size = 256,
         attn_layers = [],
@@ -771,6 +772,7 @@ class Trainer():
         self.av = None
         self.trunc_psi = trunc_psi
 
+        self.no_pl_reg = no_pl_reg
         self.pl_mean = None
 
         self.gradient_accumulate_every = gradient_accumulate_every
@@ -880,7 +882,7 @@ class Trainer():
         aug_kwargs = {'prob': aug_prob, 'types': aug_types}
 
         apply_gradient_penalty = self.steps % 4 == 0
-        apply_path_penalty = self.steps > 5000 and self.steps % 32 == 0
+        apply_path_penalty = not self.no_pl_reg and self.steps > 5000 and self.steps % 32 == 0
         apply_cl_reg_to_generated = self.steps > 20000
 
         S = self.GAN.S if not self.is_ddp else self.S_ddp
