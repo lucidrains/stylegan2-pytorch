@@ -1291,20 +1291,20 @@ class ModelLoader:
 
     def noise_to_styles(self, noise, trunc_psi = None):
         noise = noise.cuda()
-        w = self.model.GAN.S(noise)
+        w = self.model.GAN.SE(noise)
         if exists(trunc_psi):
             w = self.model.truncate_style(w)
         return w
 
     def styles_to_images(self, w):
         batch_size, *_ = w.shape
-        num_layers = self.model.GAN.G.num_layers
+        num_layers = self.model.GAN.GE.num_layers
         image_size = self.model.image_size
         w_def = [(w, num_layers)]
 
         w_tensors = styles_def_to_tensor(w_def)
         noise = image_noise(batch_size, image_size, device = 0)
 
-        images = self.model.GAN.G(w_tensors, noise)
+        images = self.model.GAN.GE(w_tensors, noise)
         images.clamp_(0., 1.)
         return images
