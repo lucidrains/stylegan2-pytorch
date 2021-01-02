@@ -700,7 +700,7 @@ class Trainer():
         mixed_prob = 0.9,
         gradient_accumulate_every=1,
         lr = 2e-4,
-        lr_mlp = 1.,
+        lr_mlp = 0.1,
         ttur_mult = 2,
         rel_disc_loss = False,
         num_workers = None,
@@ -848,11 +848,12 @@ class Trainer():
         self.fmap_max = config.pop('fmap_max', 512)
         self.attn_layers = config.pop('attn_layers', [])
         self.no_const = config.pop('no_const', False)
+        self.lr_mlp = config.pop('lr_mlp', 0.1)
         del self.GAN
         self.init_GAN()
 
     def config(self):
-        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
+        return {'image_size': self.image_size, 'network_capacity': self.network_capacity, 'lr_mlp': self.lr_mlp, 'transparent': self.transparent, 'fq_layers': self.fq_layers, 'fq_dict_size': self.fq_dict_size, 'attn_layers': self.attn_layers, 'no_const': self.no_const}
 
     def set_data_src(self, folder):
         self.dataset = Dataset(folder, self.image_size, transparent = self.transparent, aug_prob = self.dataset_aug_prob)
