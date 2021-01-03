@@ -862,6 +862,12 @@ class Trainer():
         dataloader = data.DataLoader(self.dataset, num_workers = num_workers, batch_size = math.ceil(self.batch_size / self.world_size), sampler = sampler, shuffle = not self.is_ddp, drop_last = True, pin_memory = True)
         self.loader = cycle(dataloader)
 
+        # auto set augmentation prob for user if dataset is detected to be low
+        num_samples = len(self.dataset)
+        if not exists(self.aug_prob) and num_samples < 1e5:
+            self.aug_prob = min(0.5, (1e5 - num_samples) * 3e-6)
+            print(f'autosetting augmentation probability to {round(self.aug_prob * 100)}%')
+
     def train(self):
         assert exists(self.loader), 'You must first initialize the data source with `.set_data_src(<folder of images>)`'
 
