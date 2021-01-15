@@ -109,6 +109,8 @@ def train_from_folder(
     dataset_aug_prob = 0.,
     multi_gpus = False,
     calculate_fid_every = None,
+    calculate_fid_num_images = 12800,
+    clear_fid_cache = False,
     seed = 42,
     log = False
 ):
@@ -145,6 +147,8 @@ def train_from_folder(
         generator_top_k_frac = generator_top_k_frac,
         dataset_aug_prob = dataset_aug_prob,
         calculate_fid_every = calculate_fid_every,
+        calculate_fid_num_images = calculate_fid_num_images,
+        clear_fid_cache = clear_fid_cache,
         mixed_prob = mixed_prob,
         log = log
     )

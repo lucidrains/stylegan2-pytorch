@@ -46,13 +46,11 @@ import aim
 
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
-num_cores = multiprocessing.cpu_count()
 
 # constants
 
+NUM_CORES = multiprocessing.cpu_count()
 EXTS = ['jpg', 'jpeg', 'png']
-EPS = 1e-8
-CALC_FID_NUM_IMAGES = 12800
 
 # helper classes
 
@@ -390,7 +388,7 @@ class RGBBlock(nn.Module):
         return x
 
 class Conv2DMod(nn.Module):
-    def __init__(self, in_chan, out_chan, kernel, demod=True, stride=1, dilation=1, **kwargs):
+    def __init__(self, in_chan, out_chan, kernel, demod=True, stride=1, dilation=1, eps = 1e-8, **kwargs):
         super().__init__()
         self.filters = out_chan
         self.demod = demod
@@ -398,6 +396,7 @@ class Conv2DMod(nn.Module):
         self.stride = stride
         self.dilation = dilation
         self.weight = nn.Parameter(torch.randn((out_chan, in_chan, kernel, kernel)))
+        self.eps = eps
         nn.init.kaiming_normal_(self.weight, a=0, mode='fan_in', nonlinearity='leaky_relu')
 
     def _get_same_padding(self, size, kernel, dilation, stride):
@@ -411,7 +410,7 @@ class Conv2DMod(nn.Module):
         weights = w2 * (w1 + 1)
 
         if self.demod:
-            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdim=True) + EPS)
+            d = torch.rsqrt((weights ** 2).sum(dim=(2, 3, 4), keepdim=True) + self.eps)
             weights = weights * d
 
         x = x.reshape(1, -1, h, w)
@@ -722,6 +721,8 @@ class Trainer():
         generator_top_k_frac = 0.5,
         dataset_aug_prob = 0.,
         calculate_fid_every = None,
+        calculate_fid_num_images = 12800,
+        clear_fid_cache = False,
         is_ddp = False,
         rank = 0,
         world_size = 1,
@@ -738,6 +739,7 @@ class Trainer():
         self.base_dir = base_dir
         self.results_dir = base_dir / results_dir
         self.models_dir = base_dir / models_dir
+        self.fid_dir = base_dir / 'fid' / name
         self.config_path = self.models_dir / name / '.config.json'
 
         assert log2(image_size).is_integer(), 'image size must be a power of 2 (64, 128, 256, 512, 1024)'
@@ -796,6 +798,8 @@ class Trainer():
         self.dataset_aug_prob = dataset_aug_prob
 
         self.calculate_fid_every = calculate_fid_every
+        self.calculate_fid_num_images = calculate_fid_num_images
+        self.clear_fid_cache = clear_fid_cache
 
         self.top_k_training = top_k_training
         self.generator_top_k_gamma = generator_top_k_gamma
@@ -857,7 +861,7 @@ class Trainer():
 
     def set_data_src(self, folder):
         self.dataset = Dataset(folder, self.image_size, transparent = self.transparent, aug_prob = self.dataset_aug_prob)
-        num_workers = num_workers = default(self.num_workers, num_cores if not self.is_ddp else 0)
+        num_workers = num_workers = default(self.num_workers, NUM_CORES if not self.is_ddp else 0)
         sampler = DistributedSampler(self.dataset, rank=self.rank, num_replicas=self.world_size, shuffle=True) if self.is_ddp else None
         dataloader = data.DataLoader(self.dataset, num_workers = num_workers, batch_size = math.ceil(self.batch_size / self.world_size), sampler = sampler, shuffle = not self.is_ddp, drop_last = True, pin_memory = True)
         self.loader = cycle(dataloader)
@@ -1052,7 +1056,7 @@ class Trainer():
                 self.evaluate(floor(self.steps / self.evaluate_every))
 
             if exists(self.calculate_fid_every) and self.steps % self.calculate_fid_every == 0 and self.steps != 0:
-                num_batches = math.ceil(CALC_FID_NUM_IMAGES / self.batch_size)
+                num_batches = math.ceil(self.calculate_fid_num_images / self.batch_size)
                 fid = self.calculate_fid(num_batches)
                 self.last_fid = fid
 
@@ -1112,21 +1116,26 @@ class Trainer():
         from pytorch_fid import fid_score
         torch.cuda.empty_cache()
 
-        real_path = str(self.results_dir / self.name / 'fid_real') + '/'
-        fake_path = str(self.results_dir / self.name / 'fid_fake') + '/'
+        real_path = self.fid_dir / 'real'
+        fake_path = self.fid_dir / 'fake'
 
         # remove any existing files used for fid calculation and recreate directories
-        rmtree(real_path, ignore_errors=True)
-        rmtree(fake_path, ignore_errors=True)
-        os.makedirs(real_path)
-        os.makedirs(fake_path)
 
-        for batch_num in tqdm(range(num_batches), desc='calculating FID - saving reals'):
-            real_batch = next(self.loader)
-            for k in range(real_batch.size(0)):
-                torchvision.utils.save_image(real_batch[k, :, :, :], real_path + '{}.png'.format(k + batch_num * self.batch_size))
+        if not real_path.exists() or self.clear_fid_cache:
+            rmtree(real_path, ignore_errors=True)
+            os.makedirs(real_path)
+
+            for batch_num in tqdm(range(num_batches), desc='calculating FID - saving reals'):
+                real_batch = next(self.loader)
+                for k, image in enumerate(real_batch.unbind(0)):
+                    filename = str(k + batch_num * self.batch_size)
+                    torchvision.utils.save_image(image, str(real_path / f'{filename}.png'))
 
         # generate a bunch of fake images in results / name / fid_fake
+
+        rmtree(fake_path, ignore_errors=True)
+        os.makedirs(fake_path)
+
         self.GAN.eval()
         ext = self.image_extension
 
@@ -1137,15 +1146,15 @@ class Trainer():
         for batch_num in tqdm(range(num_batches), desc='calculating FID - saving generated'):
             # latents and noise
             latents = noise_list(self.batch_size, num_layers, latent_dim, device=self.rank)
-            n = image_noise(self.batch_size, image_size, device=self.rank)
+            noise = image_noise(self.batch_size, image_size, device=self.rank)
 
             # moving averages
-            generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
+            generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, noise, trunc_psi = self.trunc_psi)
 
-            for j in range(generated_images.size(0)):
-                torchvision.utils.save_image(generated_images[j, :, :, :], str(Path(fake_path) / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
+            for j, image in enumerate(generated_images.unbind(0)):
+                torchvision.utils.save_image(image, str(fake_path / f'{str(j + batch_num * self.batch_size)}-ema.{ext}'))
 
-        return fid_score.calculate_fid_given_paths([real_path, fake_path], 256, latents.device, 2048)
+        return fid_score.calculate_fid_given_paths([str(real_path), str(fake_path)], 256, noise.device, 2048)
 
     @torch.no_grad()
     def truncate_style(self, tensor, trunc_psi = 0.75):
@@ -1249,6 +1258,7 @@ class Trainer():
     def clear(self):
         rmtree(str(self.models_dir / self.name), True)
         rmtree(str(self.results_dir / self.name), True)
+        rmtree(str(self.fid_dir), True)
         rmtree(str(self.config_path), True)
         self.init_folders()
 
