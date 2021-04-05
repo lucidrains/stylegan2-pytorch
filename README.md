@@ -340,7 +340,7 @@ By default, the StyleGAN architecture styles a constant learned 4x4 block as it 
 $ stylegan2_pytorch --data ./data --no-const
 ```
 
-## Dual Contrastive Loss
+### Dual Contrastive Loss
 
 A recent paper has proposed that a novel contrastive loss between the real and fake logits can improve quality over other types of losses. (The default in this repository is hinge loss, and the paper shows a slight improvement)
 
