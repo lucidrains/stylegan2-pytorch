@@ -340,6 +340,14 @@ By default, the StyleGAN architecture styles a constant learned 4x4 block as it 
 $ stylegan2_pytorch --data ./data --no-const
 ```
 
+## Dual Contrastive Loss
+
+A recent paper has proposed that a novel contrastive loss between the real and fake logits can improve quality over other types of losses. (The default in this repository is hinge loss, and the paper shows a slight improvement)
+
+```python
+$ stylegan2_pytorch --data ./data --dual-contrast-loss
+```
+
 ## Alternatives
 
 <a href="https://github.com/lucidrains/unet-stylegan2">Stylegan2 + Unet Discriminator</a>
@@ -469,5 +477,16 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
       eprint  = {2002.06224},
       archivePrefix = {arXiv},
       primaryClass = {stat.ML}
+}
+```
+
+```bibtex
+@misc{yu2021dual,
+    title   = {Dual Contrastive Loss and Attention for GANs},
+    author  = {Ning Yu and Guilin Liu and Aysegul Dundar and Andrew Tao and Bryan Catanzaro and Larry Davis and Mario Fritz},
+    year    = {2021},
+    eprint  = {2103.16748},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
 }
 ```

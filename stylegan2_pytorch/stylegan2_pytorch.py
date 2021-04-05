@@ -23,7 +23,7 @@ from torch.autograd import grad as torch_grad
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from einops import rearrange
+from einops import rearrange, repeat
 from kornia.filters import filter2D
 
 import torchvision
@@ -281,6 +281,26 @@ def slerp(val, low, high):
     so = torch.sin(omega)
     res = (torch.sin((1.0 - val) * omega) / so).unsqueeze(1) * low + (torch.sin(val * omega) / so).unsqueeze(1) * high
     return res
+
+# losses
+
+def gen_hinge_loss(fake, real):
+    return fake.mean()
+
+def hinge_loss(real, fake):
+    return (F.relu(1 + real) + F.relu(1 - fake)).mean()
+
+def dual_contrastive_loss(real_logits, fake_logits):
+    device = real_logits.device
+    real_logits, fake_logits = map(lambda t: rearrange(t, '... -> (...)'), (real_logits, fake_logits))
+
+    def loss_half(t1, t2):
+        t1 = rearrange(t1, 'i -> i ()')
+        t2 = repeat(t2, 'j -> i j', i = t1.shape[0])
+        t = torch.cat((t1, t2), dim = -1)
+        return F.cross_entropy(t, torch.zeros(t1.shape[0], device = device, dtype = torch.long))
+
+    return loss_half(real_logits, fake_logits) + loss_half(-fake_logits, -real_logits)
 
 # dataset
 
@@ -761,6 +781,7 @@ class Trainer():
         top_k_training = False,
         generator_top_k_gamma = 0.99,
         generator_top_k_frac = 0.5,
+        dual_contrast_loss = False,
         dataset_aug_prob = 0.,
         calculate_fid_every = None,
         calculate_fid_num_images = 12800,
@@ -846,6 +867,8 @@ class Trainer():
         self.top_k_training = top_k_training
         self.generator_top_k_gamma = generator_top_k_gamma
         self.generator_top_k_frac = generator_top_k_frac
+
+        self.dual_contrast_loss = dual_contrast_loss
 
         assert not (is_ddp and cl_reg), 'Contrastive loss regularization does not work well with multi GPUs yet'
         self.is_ddp = is_ddp
@@ -970,6 +993,17 @@ class Trainer():
 
             self.GAN.D_opt.step()
 
+        # setup losses
+
+        if not self.dual_contrast_loss:
+            D_loss_fn = hinge_loss
+            G_loss_fn = gen_hinge_loss
+            G_requires_reals = False
+        else:
+            D_loss_fn = dual_contrastive_loss
+            G_loss_fn = dual_contrastive_loss
+            G_requires_reals = True
+
         # train discriminator
 
         avg_pl_length = self.pl_mean
@@ -997,7 +1031,7 @@ class Trainer():
                 real_output_loss = real_output_loss - fake_output.mean()
                 fake_output_loss = fake_output_loss - real_output.mean()
 
-            divergence = (F.relu(1 + real_output_loss) + F.relu(1 - fake_output_loss)).mean()
+            divergence = D_loss_fn(real_output_loss, fake_output_loss)
             disc_loss = divergence
 
             if self.has_fq:
@@ -1038,6 +1072,12 @@ class Trainer():
             fake_output, _ = D_aug(generated_images, **aug_kwargs)
             fake_output_loss = fake_output
 
+            real_output = None
+            if G_requires_reals:
+                image_batch = next(self.loader).cuda(self.rank)
+                real_output, _ = D_aug(image_batch, detach = True, **aug_kwargs)
+                real_output = real_output.detach()
+
             if self.top_k_training:
                 epochs = (self.steps * batch_size * self.gradient_accumulate_every) / len(self.dataset)
                 k_frac = max(self.generator_top_k_gamma ** epochs, self.generator_top_k_frac)
@@ -1046,7 +1086,7 @@ class Trainer():
                 if k != batch_size:
                     fake_output_loss, _ = fake_output_loss.topk(k=k, largest=False)
 
-            loss = fake_output_loss.mean()
+            loss = G_loss_fn(fake_output_loss, real_output)
             gen_loss = loss
 
             if apply_path_penalty:
