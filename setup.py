@@ -22,10 +22,10 @@ setup(
   keywords = ['generative adversarial networks', 'artificial intelligence'],
   install_requires=[
       'aim',
+      'einops',
       'contrastive_learner>=0.1.0',
       'fire',
       'kornia',
-      'linear_attention_transformer>=0.15.3',
       'numpy',
       'retry',
       'tqdm',
