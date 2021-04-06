@@ -364,11 +364,11 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
 
 ```bibtex
 @article{Karras2019stylegan2,
-  title   = {Analyzing and Improving the Image Quality of {StyleGAN}},
-  author  = {Tero Karras and Samuli Laine and Miika Aittala and Janne Hellsten and Jaakko Lehtinen and Timo Aila},
-  journal = {CoRR},
-  volume  = {abs/1912.04958},
-  year    = {2019},
+    title   = {Analyzing and Improving the Image Quality of {StyleGAN}},
+    author  = {Tero Karras and Samuli Laine and Miika Aittala and Janne Hellsten and Jaakko Lehtinen and Timo Aila},
+    journal = {CoRR},
+    volume  = {abs/1912.04958},
+    year    = {2019},
 }
 ```
 
@@ -390,17 +390,17 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
 
 ```bibtex
 @article{,
-  title     = {Oxford 102 Flowers},
-  author    = {Nilsback, M-E. and Zisserman, A., 2008},
-  abstract  = {A 102 category dataset consisting of 102 flower categories, commonly occuring in the United Kingdom. Each class consists of 40 to 258 images. The images have large scale, pose and light variations.}
+    title     = {Oxford 102 Flowers},
+    author    = {Nilsback, M-E. and Zisserman, A., 2008},
+    abstract  = {A 102 category dataset consisting of 102 flower categories, commonly occuring in the United Kingdom. Each class consists of 40 to 258 images. The images have large scale, pose and light variations.}
 }
 ```
 
 ```bibtex
 @article{afifi201911k,
-  title   = {11K Hands: gender recognition and biometric identification using a large dataset of hand images},
-  author  = {Afifi, Mahmoud},
-  journal = {Multimedia Tools and Applications}
+    title   = {11K Hands: gender recognition and biometric identification using a large dataset of hand images},
+    author  = {Afifi, Mahmoud},
+    journal = {Multimedia Tools and Applications}
 }
 ```
 
@@ -416,15 +416,15 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
 
 ```bibtex
 @article{shen2019efficient,
-  author    = {Zhuoran Shen and
+    author    = {Zhuoran Shen and
                Mingyuan Zhang and
                Haiyu Zhao and
                Shuai Yi and
                Hongsheng Li},
-  title     = {Efficient Attention: Attention with Linear Complexities},
-  journal   = {CoRR},  
-  year      = {2018},
-  url       = {http://arxiv.org/abs/1812.01243},
+    title     = {Efficient Attention: Attention with Linear Complexities},
+    journal   = {CoRR},  
+    year      = {2018},
+    url       = {http://arxiv.org/abs/1812.01243},
 }
 ```
 
@@ -471,12 +471,12 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
 
 ```bibtex
 @misc{sinha2020topk,
-      title   = {Top-k Training of GANs: Improving GAN Performance by Throwing Away Bad Samples},
-      author  = {Samarth Sinha and Zhengli Zhao and Anirudh Goyal and Colin Raffel and Augustus Odena},
-      year    = {2020},
-      eprint  = {2002.06224},
-      archivePrefix = {arXiv},
-      primaryClass = {stat.ML}
+    title   = {Top-k Training of GANs: Improving GAN Performance by Throwing Away Bad Samples},
+    author  = {Samarth Sinha and Zhengli Zhao and Anirudh Goyal and Colin Raffel and Augustus Odena},
+    year    = {2020},
+    eprint  = {2002.06224},
+    archivePrefix = {arXiv},
+    primaryClass = {stat.ML}
 }
 ```
 
