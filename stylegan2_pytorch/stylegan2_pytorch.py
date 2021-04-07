@@ -87,14 +87,26 @@ class Residual(nn.Module):
     def forward(self, x):
         return self.fn(x) + x
 
-class LayerScale(nn.Module):
+class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
-        scale = torch.zeros(1, dim, 1, 1).fill_(1e-3)
-        self.g = nn.Parameter(scale)
         self.fn = fn
+        self.norm = ChanNorm(dim)
+
     def forward(self, x):
-        return self.fn(x) * self.g
+        return self.fn(self.norm(x))
+
+class ChanNorm(nn.Module):
+    def __init__(self, dim, eps = 1e-5):
+        super().__init__()
+        self.eps = eps
+        self.g = nn.Parameter(torch.ones(1, dim, 1, 1))
+        self.b = nn.Parameter(torch.zeros(1, dim, 1, 1))
+
+    def forward(self, x):
+        std = torch.var(x, dim = 1, unbiased = False, keepdim = True).sqrt()
+        mean = torch.mean(x, dim = 1, keepdim = True)
+        return (x - mean) / (std + self.eps) * self.g + self.b
 
 class PermuteToFrom(nn.Module):
     def __init__(self, fn):
@@ -160,8 +172,8 @@ class LinearAttention(nn.Module):
 # one layer of self-attention and feedforward, for images
 
 attn_and_ff = lambda chan: nn.Sequential(*[
-    Residual(LayerScale(chan, LinearAttention(chan))),
-    Residual(LayerScale(chan, nn.Sequential(nn.Conv2d(chan, chan * 2, 1), leaky_relu(), nn.Conv2d(chan * 2, chan, 1))))
+    Residual(PreNorm(chan, LinearAttention(chan))),
+    Residual(PreNorm(chan, nn.Sequential(nn.Conv2d(chan, chan * 2, 1), leaky_relu(), nn.Conv2d(chan * 2, chan, 1))))
 ])
 
 # helpers
