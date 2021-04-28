@@ -114,7 +114,7 @@ class PermuteToFrom(nn.Module):
         self.fn = fn
     def forward(self, x):
         x = x.permute(0, 2, 3, 1)
-        out, loss = self.fn(x)
+        out, *_, loss = self.fn(x)
         out = out.permute(0, 3, 1, 2)
         return out, loss
 
@@ -678,7 +678,7 @@ class Discriminator(nn.Module):
                 x = attn_block(x)
 
             if exists(q_block):
-                x, _, loss = q_block(x)
+                x, loss = q_block(x)
                 quantize_loss += loss
 
         x = self.final_conv(x)
