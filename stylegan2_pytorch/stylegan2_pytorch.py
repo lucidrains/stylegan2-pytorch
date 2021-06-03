@@ -87,6 +87,8 @@ class Residual(nn.Module):
     def forward(self, x):
         return self.fn(x) + x
 
+ChanNorm = partial(nn.InstanceNorm2d, affine = True)
+
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -95,18 +97,6 @@ class PreNorm(nn.Module):
 
     def forward(self, x):
         return self.fn(self.norm(x))
-
-class ChanNorm(nn.Module):
-    def __init__(self, dim, eps = 1e-5):
-        super().__init__()
-        self.eps = eps
-        self.g = nn.Parameter(torch.ones(1, dim, 1, 1))
-        self.b = nn.Parameter(torch.zeros(1, dim, 1, 1))
-
-    def forward(self, x):
-        std = torch.var(x, dim = 1, unbiased = False, keepdim = True).sqrt()
-        mean = torch.mean(x, dim = 1, keepdim = True)
-        return (x - mean) / (std + self.eps) * self.g + self.b
 
 class PermuteToFrom(nn.Module):
     def __init__(self, fn):
