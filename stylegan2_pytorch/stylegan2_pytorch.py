@@ -24,7 +24,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from einops import rearrange, repeat
-from kornia.filters import filter2D
+from kornia.filters import filter2d
 
 import torchvision
 from torchvision import transforms
@@ -116,7 +116,7 @@ class Blur(nn.Module):
     def forward(self, x):
         f = self.f
         f = f[None, None, :] * f [None, :, None]
-        return filter2D(x, f, normalized=True)
+        return filter2d(x, f, normalized=True)
 
 # attention
 

@@ -25,7 +25,7 @@ setup(
       'einops',
       'contrastive_learner>=0.1.0',
       'fire',
-      'kornia',
+      'kornia>=0.5.4',
       'numpy',
       'retry',
       'tqdm',
