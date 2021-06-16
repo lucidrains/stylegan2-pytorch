@@ -55,9 +55,12 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
 
     model.set_data_src(data)
 
-    for _ in tqdm(range(num_train_steps - model.steps), initial = model.steps, total = num_train_steps, mininterval=10., desc=f'{name}<{data}>'):
+    progress_bar = tqdm(initial = model.steps, total = num_train_steps, mininterval=10., desc=f'{name}<{data}>')
+    while model.steps < num_train_steps:
         retry_call(model.train, tries=3, exceptions=NanException)
-        if is_main and _ % 50 == 0:
+        progress_bar.n = model.steps
+        progress_bar.refresh()
+        if is_main and model.steps % 50 == 0:
             model.print_log()
 
     model.save(model.checkpoint_num)
