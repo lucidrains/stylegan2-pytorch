@@ -1,3 +1,4 @@
+from functools import partial
 import random
 
 import torch
@@ -92,6 +93,31 @@ def rand_cutout(x, ratio=0.5):
     x = x * mask.unsqueeze(1)
     return x
 
+def rand_zoom(x, zoom_percent, maintain_aspect_ratio=True):
+    w, h = x.size(2), x.size(3)
+
+    imgs = []
+    for img in x.unbind(dim = 0):
+        min_w = int(w * zoom_percent)
+        min_h = int(h * zoom_percent)
+
+        value_w = random.randint(min_w, w)
+        value_x = random.randint(0, w - value_w)
+        
+        if maintain_aspect_ratio:
+            value_h = int(value_w * (float(h) / float(w)))
+        else:
+            value_h = random.randint(min_h, h)
+        value_y = random.randint(0, h - value_h)
+        
+        crop = img[:, value_x:value_x+value_w, value_y:value_y+value_h]
+        crop = crop.unsqueeze(0)
+        crop = torch.nn.functional.interpolate(crop, (w, h), mode='bilinear', align_corners=True)
+        crop = crop.squeeze()
+        imgs.append(crop)
+
+    return torch.stack(imgs)
+
 AUGMENT_FNS = {
     'color': [rand_brightness, rand_saturation, rand_contrast],
     'offset': [rand_offset],
@@ -99,4 +125,5 @@ AUGMENT_FNS = {
     'offset_v': [rand_offset_v],
     'translation': [rand_translation],
     'cutout': [rand_cutout],
+    'zoom': [partial(rand_zoom, zoom_percent=0.5)]
 }
