@@ -309,16 +309,6 @@ class Lookahead(torch.optim.Optimizer):
         loss = self.optimizer.step(closure)
         return loss
 
-def update_ema_gen(G, G_ema, beta_ema = 0.9999):
-    # TODO: Try removing this and using the pre-existing EMA updates.
-    l_param = list(G.parameters())
-    l_ema_param = list(G_ema.parameters())
-
-    for i in range(len(l_param)):
-        with torch.no_grad():
-            l_ema_param[i].data.copy_(l_ema_param[i].data.mul(beta_ema)
-                                .add(l_param[i].data.mul(1-beta_ema)))
-
 # losses
 
 def gen_hinge_loss(fake, real):
@@ -835,7 +825,6 @@ class Trainer():
         lookahead = False,
         lookahead_alpha=0.5,
         lookahead_k = 5,
-        beta_ema=0.9999,
         *args,
         **kwargs
     ):
@@ -926,7 +915,6 @@ class Trainer():
 
         self.lookahead = lookahead
         self.lookahead_k = lookahead_k
-        self.beta_ema = beta_ema
         self.lookahead_alpha = lookahead_alpha
 
     @property

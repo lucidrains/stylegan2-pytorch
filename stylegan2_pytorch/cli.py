@@ -119,8 +119,7 @@ def train_from_folder(
     log = False,
     lookahead=False,
     lookahead_alpha=0.5,
-    lookahead_k = 5,
-    beta_ema = 0.9999
+    lookahead_k = 5
 ):
     model_args = dict(
         name = name,
@@ -162,8 +161,7 @@ def train_from_folder(
         log = log,
         lookahead = lookahead,
         lookahead_alpha = lookahead_alpha,
-        lookahead_k = lookahead_k,
-        beta_ema = beta_ema
+        lookahead_k = lookahead_k
     )
 
     if generate:
