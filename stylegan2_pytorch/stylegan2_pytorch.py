@@ -1154,7 +1154,7 @@ class Trainer():
             self.GAN.D_opt.lookahead_step()
             self.GAN.G_opt.lookahead_step()
 
-            if self.is_main():
+            if self.is_main:
                 self.GAN.EMA()
 
         if apply_path_penalty and not np.isnan(avg_pl_length):
