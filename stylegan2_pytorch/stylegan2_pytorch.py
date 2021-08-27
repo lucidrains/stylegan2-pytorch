@@ -43,7 +43,7 @@ except:
     APEX_AVAILABLE = False
 
 import aim
-import wandb
+import wandb as wandb_logger
 
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
@@ -802,7 +802,8 @@ class Trainer():
         is_ddp: bool = False,
         rank: int = 0,
         world_size: int = 1,
-        log: str = False,
+        log: bool = False,
+        wandb: bool = False,
         *args,
         **kwargs
     ):
@@ -890,6 +891,7 @@ class Trainer():
         self.world_size = world_size
 
         self.logger = aim.Session(experiment=name) if log else None
+        self.wandb = wandb
 
     @property
     def image_extension(self):
@@ -1182,7 +1184,7 @@ class Trainer():
         log_text = str(self.results_dir / self.name / f'{str(num)}.{ext}')
         torchvision.utils.save_image(generated_images, log_text, nrow=num_rows)
         
-        if str(self.log).lower() == 'wandb':
+        if self.wandb:
             self.log_images_to_wandb(generated_images, log_text)
         
         # moving averages
@@ -1191,7 +1193,7 @@ class Trainer():
         log_text = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
         torchvision.utils.save_image(generated_images, log_text, nrow=num_rows)
 
-        if str(self.log).lower() == 'wandb':
+        if self.wandb:
             self.log_images_to_wandb(generated_images, log_text)
 
         # mixing regularities
@@ -1215,7 +1217,7 @@ class Trainer():
         log_text = str(self.results_dir / self.name / f'{str(num)}-mr.{ext}')
         torchvision.utils.save_image(generated_images, log_text, nrow=num_rows)
 
-        if str(self.log).lower() == 'wandb':
+        if self.wandb:
             self.log_images_to_wandb(generated_images, log_text)
             
 
@@ -1354,8 +1356,8 @@ class Trainer():
     def track(self, value, name):
         if not exists(self.logger):
             return
-        if str(self.log).lower() == 'wandb':
-            wandb.log({name: value})
+        if self.wandb:
+            wandb_logger.log({name: value})
         self.logger.track(value, name = name)
 
     def model_name(self, num):
@@ -1418,9 +1420,9 @@ class Trainer():
         to Weights And Biases
         """
         
-        wandb.log({
+        wandb_logger.log({
             "generated_images": [
-                wandb.Image(
+                wandb_logger.Image(
                     image, caption=caption
                 )
             ]

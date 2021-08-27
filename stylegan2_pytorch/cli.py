@@ -12,7 +12,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 
 import numpy as np
-import wandb
+import wandb as wandb_logger
 
 def cast_list(el):
     return el if isinstance(el, list) else [el]
@@ -49,9 +49,9 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
 
     model = Trainer(**model_args)
 
-    if str(model_args.log).lower() == 'wandb':
-        wandb.init()
-        wandb.watch(model, log_freq=log_freq)
+    if model_args.wandb:
+        wandb_logger.init()
+        wandb_logger.watch(model, log_freq=log_freq)
 
     if not new:
         model.load(load_from)
@@ -121,7 +121,8 @@ def train_from_folder(
     calculate_fid_num_images: int = 12800,
     clear_fid_cache: bool = False,
     seed: int = 42,
-    log: str = 'False'
+    log: bool = False,
+    wandb: bool = False
 ):
     model_args = dict(
         name = name,
@@ -160,7 +161,8 @@ def train_from_folder(
         calculate_fid_num_images = calculate_fid_num_images,
         clear_fid_cache = clear_fid_cache,
         mixed_prob = mixed_prob,
-        log = False if log == 'False' else log
+        log = log,
+        wandb = wandb
     )
 
     if generate:
