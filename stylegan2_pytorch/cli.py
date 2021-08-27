@@ -12,6 +12,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 
 import numpy as np
+import wandb
 
 def cast_list(el):
     return el if isinstance(el, list) else [el]
@@ -28,7 +29,7 @@ def set_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed):
+def run_training(rank, world_size, model_args, data, load_from, new, num_train_steps, name, seed, log_freq: int = 50):
     is_main = rank == 0
     is_ddp = world_size > 1
 
@@ -48,6 +49,10 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
 
     model = Trainer(**model_args)
 
+    if str(model_args.log).lower() == 'wandb':
+        wandb.init()
+        wandb.watch(model, log_freq=log_freq)
+
     if not new:
         model.load(load_from)
     else:
@@ -60,7 +65,7 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
         retry_call(model.train, tries=3, exceptions=NanException)
         progress_bar.n = model.steps
         progress_bar.refresh()
-        if is_main and model.steps % 50 == 0:
+        if is_main and model.steps % log_freq == 0:
             model.print_log()
 
     model.save(model.checkpoint_num)
@@ -69,54 +74,54 @@ def run_training(rank, world_size, model_args, data, load_from, new, num_train_s
         dist.destroy_process_group()
 
 def train_from_folder(
-    data = './data',
-    results_dir = './results',
-    models_dir = './models',
-    name = 'default',
-    new = False,
-    load_from = -1,
-    image_size = 128,
-    network_capacity = 16,
-    fmap_max = 512,
-    transparent = False,
-    batch_size = 5,
-    gradient_accumulate_every = 6,
-    num_train_steps = 150000,
-    learning_rate = 2e-4,
-    lr_mlp = 0.1,
-    ttur_mult = 1.5,
-    rel_disc_loss = False,
-    num_workers =  None,
-    save_every = 1000,
-    evaluate_every = 1000,
-    generate = False,
-    num_generate = 1,
-    generate_interpolation = False,
-    interpolation_num_steps = 100,
-    save_frames = False,
-    num_image_tiles = 8,
-    trunc_psi = 0.75,
-    mixed_prob = 0.9,
-    fp16 = False,
-    no_pl_reg = False,
-    cl_reg = False,
-    fq_layers = [],
-    fq_dict_size = 256,
-    attn_layers = [],
-    no_const = False,
-    aug_prob = 0.,
-    aug_types = ['translation', 'cutout'],
-    top_k_training = False,
-    generator_top_k_gamma = 0.99,
-    generator_top_k_frac = 0.5,
-    dual_contrast_loss = False,
-    dataset_aug_prob = 0.,
-    multi_gpus = False,
-    calculate_fid_every = None,
-    calculate_fid_num_images = 12800,
-    clear_fid_cache = False,
-    seed = 42,
-    log = False
+    data: str = './data',
+    results_dir: str = './results',
+    models_dir: str = './models',
+    name: str = 'default',
+    new: bool = False,
+    load_from: int = -1,
+    image_size: int = 128,
+    network_capacity: int = 16,
+    fmap_max: int = 512,
+    transparent: bool = False,
+    batch_size: int = 5,
+    gradient_accumulate_every: int = 6,
+    num_train_steps: int = 150000,
+    learning_rate: float = 2e-4,
+    lr_mlp: float = 0.1,
+    ttur_mult: float = 1.5,
+    rel_disc_loss: bool = False,
+    num_workers: int =  None,
+    save_every: int = 1000,
+    evaluate_every: int = 1000,
+    generate: bool = False,
+    num_generate: int = 1,
+    generate_interpolation: bool = False,
+    interpolation_num_steps: int = 100,
+    save_frames: bool = False,
+    num_image_tiles: int = 8,
+    trunc_psi: float = 0.75,
+    mixed_prob: float = 0.9,
+    fp16: bool = False,
+    no_pl_reg: bool = False,
+    cl_reg: bool = False,
+    fq_layers: list = [],
+    fq_dict_size: int = 256,
+    attn_layers: list = [],
+    no_const: bool = False,
+    aug_prob: float = 0.,
+    aug_types: list = ['translation', 'cutout'],
+    top_k_training: bool = False,
+    generator_top_k_gamma: float = 0.99,
+    generator_top_k_frac: float = 0.5,
+    dual_contrast_loss: bool = False,
+    dataset_aug_prob: float = 0.,
+    multi_gpus: bool = False,
+    calculate_fid_every: int = None,
+    calculate_fid_num_images: int = 12800,
+    clear_fid_cache: bool = False,
+    seed: int = 42,
+    log: str = False
 ):
     model_args = dict(
         name = name,

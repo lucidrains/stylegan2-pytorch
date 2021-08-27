@@ -43,6 +43,7 @@ except:
     APEX_AVAILABLE = False
 
 import aim
+import wandb
 
 assert torch.cuda.is_available(), 'You need to have an Nvidia GPU with CUDA installed.'
 
@@ -761,47 +762,47 @@ class StyleGAN2(nn.Module):
 class Trainer():
     def __init__(
         self,
-        name = 'default',
-        results_dir = 'results',
-        models_dir = 'models',
-        base_dir = './',
-        image_size = 128,
-        network_capacity = 16,
-        fmap_max = 512,
-        transparent = False,
-        batch_size = 4,
-        mixed_prob = 0.9,
-        gradient_accumulate_every=1,
-        lr = 2e-4,
-        lr_mlp = 0.1,
-        ttur_mult = 2,
-        rel_disc_loss = False,
-        num_workers = None,
-        save_every = 1000,
-        evaluate_every = 1000,
-        num_image_tiles = 8,
-        trunc_psi = 0.6,
-        fp16 = False,
-        cl_reg = False,
-        no_pl_reg = False,
-        fq_layers = [],
-        fq_dict_size = 256,
-        attn_layers = [],
-        no_const = False,
-        aug_prob = 0.,
-        aug_types = ['translation', 'cutout'],
-        top_k_training = False,
-        generator_top_k_gamma = 0.99,
-        generator_top_k_frac = 0.5,
-        dual_contrast_loss = False,
-        dataset_aug_prob = 0.,
-        calculate_fid_every = None,
-        calculate_fid_num_images = 12800,
-        clear_fid_cache = False,
-        is_ddp = False,
-        rank = 0,
-        world_size = 1,
-        log = False,
+        name: str = 'default',
+        results_dir: str = 'results',
+        models_dir: str = 'models',
+        base_dir: str = './',
+        image_size: int = 128,
+        network_capacity: int = 16,
+        fmap_max: int = 512,
+        transparent: bool = False,
+        batch_size: int = 4,
+        mixed_prob: float = 0.9,
+        gradient_accumulate_every: int = 1,
+        lr: float = 2e-4,
+        lr_mlp: float = 0.1,
+        ttur_mult: int = 2,
+        rel_disc_loss: bool = False,
+        num_workers: int = None,
+        save_every: int = 1000,
+        evaluate_every: int = 1000,
+        num_image_tiles: int = 8,
+        trunc_psi: float = 0.6,
+        fp16: bool = False,
+        cl_reg: bool = False,
+        no_pl_reg: bool = False,
+        fq_layers: list = [],
+        fq_dict_size: int = 256,
+        attn_layers: list = [],
+        no_const: bool = False,
+        aug_prob: float = 0.,
+        aug_types: list = ['translation', 'cutout'],
+        top_k_training: bool = False,
+        generator_top_k_gamma: float = 0.99,
+        generator_top_k_frac: float = 0.5,
+        dual_contrast_loss: bool = False,
+        dataset_aug_prob: float = 0.,
+        calculate_fid_every: int = None,
+        calculate_fid_num_images: int = 12800,
+        clear_fid_cache: bool = False,
+        is_ddp: bool = False,
+        rank: int = 0,
+        world_size: int = 1,
+        log: str = False,
         *args,
         **kwargs
     ):
@@ -1178,12 +1179,20 @@ class Trainer():
         # regular
 
         generated_images = self.generate_truncated(self.GAN.S, self.GAN.G, latents, n, trunc_psi = self.trunc_psi)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}.{ext}'), nrow=num_rows)
+        log_text = str(self.results_dir / self.name / f'{str(num)}.{ext}')
+        torchvision.utils.save_image(generated_images, log_text, nrow=num_rows)
+        
+        if str(self.log).lower() == 'wandb':
+            self.log_images_to_wandb(generated_images, log_text)
         
         # moving averages
 
         generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, latents, n, trunc_psi = self.trunc_psi)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-ema.{ext}'), nrow=num_rows)
+        log_text = str(self.results_dir / self.name / f'{str(num)}-ema.{ext}')
+        torchvision.utils.save_image(generated_images, log_text, nrow=num_rows)
+
+        if str(self.log).lower() == 'wandb':
+            self.log_images_to_wandb(generated_images, log_text)
 
         # mixing regularities
 
@@ -1203,7 +1212,12 @@ class Trainer():
         mixed_latents = [(tmp1, tt), (tmp2, num_layers - tt)]
 
         generated_images = self.generate_truncated(self.GAN.SE, self.GAN.GE, mixed_latents, n, trunc_psi = self.trunc_psi)
-        torchvision.utils.save_image(generated_images, str(self.results_dir / self.name / f'{str(num)}-mr.{ext}'), nrow=num_rows)
+        log_text = str(self.results_dir / self.name / f'{str(num)}-mr.{ext}')
+        torchvision.utils.save_image(generated_images, log_text, nrow=num_rows)
+
+        if str(self.log).lower() == 'wandb':
+            self.log_images_to_wandb(generated_images, log_text)
+            
 
     @torch.no_grad()
     def calculate_fid(self, num_batches):
@@ -1340,6 +1354,8 @@ class Trainer():
     def track(self, value, name):
         if not exists(self.logger):
             return
+        if str(self.log).lower() == 'wandb':
+            wandb.log({name: value})
         self.logger.track(value, name = name)
 
     def model_name(self, num):
@@ -1394,6 +1410,22 @@ class Trainer():
             raise e
         if self.GAN.fp16 and 'amp' in load_data:
             amp.load_state_dict(load_data['amp'])
+
+    @staticmethod
+    def log_images_to_wandb(image, caption):
+        """
+        Helper method that captions an image and logs it
+        to Weights And Biases
+        """
+        
+        wandb.log({
+            "generated_images": [
+                wandb.Image(
+                    image, caption=caption
+                )
+            ]
+        })
+        return None
 
 class ModelLoader:
     def __init__(self, *, base_dir, name = 'default', load_from = -1):
