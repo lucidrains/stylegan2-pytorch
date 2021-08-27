@@ -121,7 +121,7 @@ def train_from_folder(
     calculate_fid_num_images: int = 12800,
     clear_fid_cache: bool = False,
     seed: int = 42,
-    log: str = False
+    log: str = 'False'
 ):
     model_args = dict(
         name = name,
@@ -160,7 +160,7 @@ def train_from_folder(
         calculate_fid_num_images = calculate_fid_num_images,
         clear_fid_cache = clear_fid_cache,
         mixed_prob = mixed_prob,
-        log = log
+        log = False if log == 'False' else log
     )
 
     if generate:

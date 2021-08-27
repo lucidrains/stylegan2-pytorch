@@ -273,6 +273,8 @@ save_image(images, './sample.jpg') # save your images, or do whatever you desire
 
 ### Logging to experiment tracker
 
+#### Aim
+
 To log the losses to an open source experiment tracker (Aim), you simply need to pass an extra flag like so.
 
 ```bash
@@ -289,6 +291,15 @@ Then open up your browser to the address and you should see
 
 <img src="./images/aim.png" width="600px"></img>
 
+#### [Weights & Biases](https://docs.wandb.ai/)
+
+To log the model, losses, and images generated during training to Weights & Biases simply pass wandb to the log flag like so.
+
+```bash
+$ stylegan2_pytorch --data ./data --log wandb
+```
+
+You should then see your logs begin to appear at [https://wandb.ai/](https://wandb.ai/)
 
 ## Experimental
 
