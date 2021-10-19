@@ -32,7 +32,7 @@ setup(
       'torch',
       'torchvision',
       'pillow',
-      'vector-quantize-pytorch>=0.1.0'
+      'vector-quantize-pytorch==0.1.0'
   ],
   classifiers=[
       'Development Status :: 4 - Beta',
