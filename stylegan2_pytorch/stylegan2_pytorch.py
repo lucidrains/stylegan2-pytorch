@@ -387,7 +387,7 @@ class Dataset(data.Dataset):
 # augmentations
 
 def random_hflip(tensor, prob):
-    if prob > random():
+    if prob < random():
         return tensor
     return torch.flip(tensor, dims=(3,))
 
