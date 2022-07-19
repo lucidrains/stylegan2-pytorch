@@ -15,6 +15,7 @@ setup(
   version = __version__,
   license='GPLv3+',
   description = 'StyleGan2 in Pytorch',
+  long_description_content_type = 'text/markdown',
   author = 'Phil Wang',
   author_email = 'lucidrains@gmail.com',
   url = 'https://github.com/lucidrains/stylegan2-pytorch',
