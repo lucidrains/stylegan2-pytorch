@@ -1251,8 +1251,8 @@ class Trainer():
         return fid_score.calculate_fid_given_paths([str(real_path), str(fake_path)], 256, noise.device, 2048)
 
     @torch.no_grad()
-    def truncate_style(self, tensor, trunc_psi = 0.75):
-        S = self.GAN.S
+    def truncate_style(self, tensor, S = None, trunc_psi = 0.75):
+        S = default(S, self.GAN.S)
         batch_size = self.batch_size
         latent_dim = self.GAN.G.latent_dim
 
@@ -1267,17 +1267,17 @@ class Trainer():
         return tensor
 
     @torch.no_grad()
-    def truncate_style_defs(self, w, trunc_psi = 0.75):
+    def truncate_style_defs(self, w, S = None, trunc_psi = 0.75):
         w_space = []
         for tensor, num_layers in w:
-            tensor = self.truncate_style(tensor, trunc_psi = trunc_psi)            
+            tensor = self.truncate_style(tensor, S = S, trunc_psi = trunc_psi)
             w_space.append((tensor, num_layers))
         return w_space
 
     @torch.no_grad()
     def generate_truncated(self, S, G, style, noi, trunc_psi = 0.75, num_image_tiles = 8):
         w = map(lambda t: (S(t[0]), t[1]), style)
-        w_truncated = self.truncate_style_defs(w, trunc_psi = trunc_psi)
+        w_truncated = self.truncate_style_defs(w, S = S, trunc_psi = trunc_psi)
         w_styles = styles_def_to_tensor(w_truncated)
         generated_images = evaluate_in_chunks(self.batch_size, G, w_styles, noi)
         return generated_images.clamp_(0., 1.)
