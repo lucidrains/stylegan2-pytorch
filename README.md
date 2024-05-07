@@ -490,3 +490,14 @@ Thank you to Matthew Mann for his inspiring [simple port](https://github.com/man
     primaryClass = {cs.CV}
 }
 ```
+
+```bibtex
+@misc{chavdarova2021taming,
+    title={Taming GANs with Lookahead-Minmax}, 
+    author={Tatjana Chavdarova and Matteo Pagliardini and Sebastian U. Stich and Francois Fleuret and Martin Jaggi},
+    year={2021},
+    eprint={2006.14567},
+    archivePrefix={arXiv},
+    primaryClass={stat.ML}
+}
+```
