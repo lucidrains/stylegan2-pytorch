@@ -299,15 +299,15 @@ def slerp(val, low, high):
 def gen_hinge_loss(fake, real):
     return fake.mean()
 
-def hinge_loss(real, fake):
+def hinge_loss(fake, real):
     return (F.relu(1 + real) + F.relu(1 - fake)).mean()
 
-def dual_contrastive_loss(real_logits, fake_logits):
+def dual_contrastive_loss(fake_logits, real_logits):
     device = real_logits.device
     real_logits, fake_logits = map(lambda t: rearrange(t, '... -> (...)'), (real_logits, fake_logits))
 
     def loss_half(t1, t2):
-        t1 = rearrange(t1, 'i -> i ()')
+        t1 = rearrange(t1, 'i -> i 1')
         t2 = repeat(t2, 'j -> i j', i = t1.shape[0])
         t = torch.cat((t1, t2), dim = -1)
         return F.cross_entropy(t, torch.zeros(t1.shape[0], device = device, dtype = torch.long))
@@ -1043,7 +1043,7 @@ class Trainer():
                 real_output_loss = real_output_loss - fake_output.mean()
                 fake_output_loss = fake_output_loss - real_output.mean()
 
-            divergence = D_loss_fn(real_output_loss, fake_output_loss)
+            divergence = D_loss_fn(fake_output_loss, real_output_loss)
             disc_loss = divergence
 
             if self.has_fq:
