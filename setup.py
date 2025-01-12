@@ -26,14 +26,14 @@ setup(
   ],
   install_requires=[
     'aim',
-    'einops>=0.7.0',
+    'einops>=0.8.0',
     'contrastive_learner>=0.1.0',
     'fire',
     'kornia>=0.5.4',
     'numpy',
     'retry',
     'tqdm',
-    'torch',
+    'torch>=2.2',
     'torchvision',
     'pillow',
     'vector-quantize-pytorch==0.1.0'

@@ -232,14 +232,14 @@ def loss_backwards(fp16, loss, optimizer, loss_id, **kwargs):
     else:
         loss.backward(**kwargs)
 
-def gradient_penalty(images, output, weight = 10):
+def gradient_penalty(images, output, weight = 10, center = 0.):
     batch_size = images.shape[0]
     gradients = torch_grad(outputs=output, inputs=images,
                            grad_outputs=torch.ones(output.size(), device=images.device),
                            create_graph=True, retain_graph=True, only_inputs=True)[0]
 
     gradients = gradients.reshape(batch_size, -1)
-    return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    return weight * ((gradients.norm(2, dim=1) - center) ** 2).mean()
 
 def calc_pl_lengths(styles, images):
     device = images.device
@@ -396,7 +396,7 @@ class AugWrapper(nn.Module):
         super().__init__()
         self.D = D
 
-    def forward(self, images, prob = 0., types = [], detach = False):
+    def forward(self, images, prob = 0., types = [], detach = False, return_aug_images = False, input_requires_grad = False):
         if random() < prob:
             images = random_hflip(images, prob=0.5)
             images = DiffAugment(images, types=types)
@@ -404,7 +404,15 @@ class AugWrapper(nn.Module):
         if detach:
             images = images.detach()
 
-        return self.D(images)
+        if input_requires_grad:
+            images.requires_grad_()
+
+        logits = self.D(images)
+
+        if not return_aug_images:
+            return logits
+
+        return images, logits
 
 # stylegan2 classes
 
@@ -1030,10 +1038,13 @@ class Trainer():
             w_styles = styles_def_to_tensor(w_space)
 
             generated_images = G(w_styles, noise)
-            fake_output, fake_q_loss = D_aug(generated_images.clone().detach(), detach = True, **aug_kwargs)
+            generated_images, (fake_output, fake_q_loss) = D_aug(generated_images.clone().detach(), return_aug_images = True, input_requires_grad = apply_gradient_penalty, detach = True, **aug_kwargs)
 
             image_batch = next(self.loader).cuda(self.rank)
-            image_batch.requires_grad_()
+
+            if apply_gradient_penalty:
+                image_batch.requires_grad_()
+
             real_output, real_q_loss = D_aug(image_batch, **aug_kwargs)
 
             real_output_loss = real_output
@@ -1053,7 +1064,7 @@ class Trainer():
                 disc_loss = disc_loss + quantize_loss
 
             if apply_gradient_penalty:
-                gp = gradient_penalty(image_batch, real_output)
+                gp = gradient_penalty(image_batch, real_output) + gradient_penalty(generated_images, fake_output)
                 self.last_gp_loss = gp.clone().detach().item()
                 self.track(self.last_gp_loss, 'GP')
                 disc_loss = disc_loss + gp
@@ -1382,7 +1393,7 @@ class Trainer():
 
         self.steps = name * self.save_every
 
-        load_data = torch.load(self.model_name(name))
+        load_data = torch.load(self.model_name(name), weights_only = True)
 
         if 'version' in load_data:
             print(f"loading from version {load_data['version']}")
